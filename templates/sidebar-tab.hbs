@@ -1,0 +1,24 @@
+<header class="ddf-sidebar-header">
+  <div class="ddf-sidebar-actions">
+    <button type="button" class="ddf-create-faction" title="Create Faction">
+      <i class="fa-solid fa-plus"></i> Create Faction
+    </button>
+    <button type="button" class="ddf-create-folder" title="Create Folder">
+      <i class="fa-solid fa-folder-plus"></i> Folder
+    </button>
+  </div>
+  <button type="button" class="ddf-relationships-btn">
+    <i class="fa-solid fa-diagram-project"></i> Faction Relationships
+  </button>
+  <div class="ddf-sidebar-search">
+    <input class="ddf-faction-search" type="search" placeholder="Search Factions…" />
+  </div>
+</header>
+
+<ol class="faction-items ddf-sidebar-list">
+  {{#each factions}}
+    {{> ddf-faction-item faction=this selectedId=../selectedId}}
+  {{else}}
+    <li class="faction-empty">No factions yet. Click <strong>Create Faction</strong> to get started.</li>
+  {{/each}}
+</ol>

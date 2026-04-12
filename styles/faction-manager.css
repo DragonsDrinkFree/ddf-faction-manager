@@ -1,0 +1,2386 @@
+/* ═══════════════════════════════════════════════════════════════════
+   SIDEBAR TAB  (#ddfFactions)
+   ═══════════════════════════════════════════════════════════════════ */
+
+#ddfFactions .ddf-sidebar-header {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 6px 6px 4px;
+  border-bottom: 1px solid var(--color-border-light-primary);
+  flex-shrink: 0;
+}
+
+#ddfFactions .ddf-sidebar-actions {
+  display: flex;
+  gap: 4px;
+}
+
+#ddfFactions .ddf-sidebar-actions button {
+  flex: 1;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#ddfFactions .ddf-relationships-btn {
+  width: 100%;
+  font-size: 0.82rem;
+}
+
+#ddfFactions .ddf-sidebar-search input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+#ddfFactions .ddf-sidebar-list {
+  flex: 1;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+}
+
+/* Reuse faction-item styles from FactionDetailApp below */
+
+/* ─── Faction item styles — shared between sidebar tab and old manager ─ */
+
+#ddfFactions .faction-item,
+.ddf-faction-manager .faction-item {
+  list-style: none;
+}
+
+#ddfFactions .faction-item-row,
+.ddf-faction-manager .faction-item-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  cursor: pointer;
+  border-radius: 3px;
+  margin: 1px 4px;
+  transition: background 0.1s;
+}
+
+#ddfFactions .faction-item-row:hover,
+.ddf-faction-manager .faction-item-row:hover {
+  background: var(--color-hover-bg);
+}
+
+#ddfFactions .faction-item.selected > .faction-item-row,
+.ddf-faction-manager .faction-item.selected > .faction-item-row {
+  background: var(--color-bg-btn);
+  color: var(--color-text-light-heading);
+}
+
+#ddfFactions .faction-collapse-icon,
+#ddfFactions .faction-collapse-spacer,
+.ddf-faction-manager .faction-collapse-icon,
+.ddf-faction-manager .faction-collapse-spacer {
+  flex-shrink: 0;
+  width: 12px;
+  font-size: 0.7rem;
+}
+
+#ddfFactions .faction-name,
+.ddf-faction-manager .faction-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.9rem;
+}
+
+#ddfFactions .faction-item-controls,
+.ddf-faction-manager .faction-item-controls {
+  display: none;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+#ddfFactions .faction-item-row:hover .faction-item-controls,
+#ddfFactions .faction-item.selected > .faction-item-row .faction-item-controls,
+.ddf-faction-manager .faction-item-row:hover .faction-item-controls,
+.ddf-faction-manager .faction-item.selected > .faction-item-row .faction-item-controls {
+  display: flex;
+}
+
+#ddfFactions .faction-item-controls a,
+.ddf-faction-manager .faction-item-controls a {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  font-size: 0.7rem;
+  border-radius: 3px;
+  cursor: pointer;
+  opacity: 0.65;
+}
+
+#ddfFactions .faction-item-controls a:hover,
+.ddf-faction-manager .faction-item-controls a:hover {
+  opacity: 1;
+  background: var(--color-hover-bg);
+}
+
+#ddfFactions .faction-children,
+.ddf-faction-manager .faction-children {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 18px;
+}
+
+#ddfFactions .faction-empty,
+.ddf-faction-manager .faction-empty {
+  padding: 8px 12px;
+  font-style: italic;
+  font-size: 0.85rem;
+  opacity: 0.6;
+}
+
+/* ─── Old Journal Sidebar Button (removed) ───────────────────────── */
+
+/* ─── App Window ─────────────────────────────────────────────────── */
+
+.ddf-faction-manager .window-content {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* ─── App Layout (faction list | main area) ──────────────────────── */
+
+.ddf-faction-manager .ddf-app-layout {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ─── Right Area ─────────────────────────────────────────────────── */
+
+.ddf-faction-manager .ddf-main-area {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ─── Tab Navigation ─────────────────────────────────────────────── */
+
+.ddf-faction-manager .ddf-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 4px 8px 0;
+  border-bottom: 1px solid var(--color-border-light-primary);
+  flex-shrink: 0;
+}
+
+.ddf-faction-manager .ddf-tab-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  margin-bottom: -1px;
+  cursor: pointer;
+  border-radius: 4px 4px 0 0;
+  border-bottom: 2px solid transparent;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  opacity: 0.55;
+  transition: opacity 0.15s;
+}
+
+.ddf-faction-manager .ddf-tab-item:hover {
+  opacity: 0.85;
+}
+
+.ddf-faction-manager .ddf-tab-item.active {
+  opacity: 1;
+  font-weight: bold;
+  border-bottom-color: var(--color-text-dark-primary);
+}
+
+/* ─── Tab Sections Container ─────────────────────────────────────── */
+
+.ddf-faction-manager .ddf-tab-sections {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.ddf-faction-manager .tab {
+  display: none;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.ddf-faction-manager .tab.active {
+  display: flex;
+}
+
+/* ─── Left Pane: Faction List ────────────────────────────────────── */
+
+.ddf-faction-manager .faction-list {
+  width: 154px;
+  min-width: 112px;
+  max-width: 210px;
+  display: flex;
+  flex-direction: column;
+  border-right: 3px solid rgba(128, 128, 128, 0.45);
+  background: var(--color-bg-option);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.ddf-faction-manager .faction-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  font-weight: bold;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--color-border-light-primary);
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+
+.ddf-faction-manager .faction-list-header button {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  line-height: 22px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  opacity: 0.8;
+}
+
+.ddf-faction-manager .faction-list-header button:hover {
+  opacity: 1;
+}
+
+.ddf-faction-manager .faction-items {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.ddf-faction-manager .faction-empty {
+  padding: 8px 12px;
+  font-style: italic;
+  font-size: 0.85rem;
+  opacity: 0.6;
+}
+
+/* ─── Faction List Items — see shared rules at top of file ───────── */
+
+/* ─── Factions Tab: Journal Viewer ──────────────────────────────── */
+
+.ddf-faction-manager .faction-content-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--color-border-light-primary);
+  flex-shrink: 0;
+}
+
+.ddf-faction-manager .faction-content-header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  border: none;
+}
+
+.ddf-faction-manager .faction-content-actions button {
+  font-size: 0.8rem;
+}
+
+.ddf-faction-manager .faction-journal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px;
+}
+
+.ddf-faction-manager .faction-no-selection {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  opacity: 0.35;
+}
+
+.ddf-faction-manager .faction-no-selection i {
+  font-size: 3rem;
+}
+
+/* ─── Relationships Tab Layout ───────────────────────────────────── */
+
+.ddf-faction-manager .tab.relationships {
+  position: relative;
+}
+
+.ddf-faction-manager .relationships-layout {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ─── Left Pane: Connection List ─────────────────────────────────── */
+
+.ddf-faction-manager .rel-list-pane {
+  width: 160px;
+  min-width: 120px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--color-border-light-primary);
+  background: var(--color-bg-option);
+  overflow: hidden;
+}
+
+.ddf-faction-manager .rel-list-header {
+  padding: 6px 10px;
+  font-weight: bold;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.7;
+  border-bottom: 1px solid var(--color-border-light-primary);
+  flex-shrink: 0;
+}
+
+.ddf-faction-manager .rel-list-body {
+  overflow-y: auto;
+  flex: 1;
+  padding: 4px 0;
+}
+
+.ddf-faction-manager .rel-list-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  font-size: 0.82rem;
+  border-radius: 3px;
+  margin: 1px 4px;
+}
+
+.ddf-faction-manager .rel-list-item.rel-auto {
+  opacity: 0.65;
+  font-style: italic;
+}
+
+.ddf-faction-manager .rel-type-icon {
+  flex-shrink: 0;
+  width: 14px;
+  text-align: center;
+  font-size: 0.75rem;
+  opacity: 0.65;
+}
+
+.ddf-faction-manager .rel-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.ddf-faction-manager .rel-dir {
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  opacity: 0.55;
+}
+
+/* Color swatch — a circle button that opens the native color picker */
+.ddf-faction-manager .rel-color-swatch {
+  flex-shrink: 0;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 1.5px solid var(--color-border-primary);
+  cursor: pointer;
+  position: relative;
+  display: block;
+}
+
+.ddf-faction-manager .rel-color-swatch.rel-color-unset {
+  background: transparent;
+  border-style: dashed;
+}
+
+.ddf-faction-manager .rel-color-input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+  padding: 0;
+  border: none;
+}
+
+.ddf-faction-manager .rel-list-empty {
+  padding: 10px 12px;
+  font-style: italic;
+  font-size: 0.8rem;
+  opacity: 0.5;
+  line-height: 1.6;
+}
+
+/* ─── Relationships Tab: Mind Map Canvas ─────────────────────────── */
+
+.ddf-faction-manager .relationship-canvas-wrap {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--color-bg-sheet) 95%, var(--color-shadow-primary, #000) 5%);
+}
+
+.ddf-faction-manager .relationship-canvas-wrap svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.ddf-faction-manager .relationship-hint {
+  flex-shrink: 0;
+  padding: 4px 12px;
+  font-size: 0.75rem;
+  opacity: 0.45;
+  border-top: 1px solid var(--color-border-light-primary);
+  text-align: center;
+}
+
+.ddf-faction-manager .relationship-hint kbd {
+  font-family: inherit;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  padding: 0 4px;
+  font-size: 0.7rem;
+}
+
+/* ─── SVG Node Shapes ────────────────────────────────────────────── */
+
+.mm-node {
+  cursor: grab;
+  user-select: none;
+}
+
+.mm-node:active {
+  cursor: grabbing;
+}
+
+.mm-node .mm-shape {
+  stroke-width: 2;
+  transition: filter 0.1s;
+}
+
+.mm-node:hover .mm-shape {
+  filter: brightness(1.2);
+}
+
+.mm-central {
+  fill: var(--color-bg-btn);
+  stroke: var(--color-border-highlight-alt, var(--color-border-highlight));
+}
+
+.mm-subfaction {
+  fill: color-mix(in srgb, var(--color-bg-sheet) 60%, var(--color-border-highlight) 40%);
+  stroke: var(--color-border-highlight);
+}
+
+.mm-faction-node {
+  fill: color-mix(in srgb, var(--color-bg-sheet) 70%, var(--color-border-highlight) 30%);
+  stroke: var(--color-border-highlight);
+}
+
+.mm-document {
+  fill: var(--color-bg-option);
+  stroke: var(--color-border-primary);
+}
+
+.mm-simple {
+  fill: color-mix(in srgb, var(--color-bg-sheet) 80%, var(--color-shadow-primary, #000) 20%);
+  stroke: var(--color-border-primary);
+  stroke-dasharray: 4 3;
+}
+
+.mm-node-label {
+  font-size: 11px;
+  fill: var(--color-text-primary);
+  pointer-events: none;
+}
+
+.mm-node-icon {
+  fill: var(--color-text-dark-secondary);
+  pointer-events: none;
+}
+
+.mm-relation-label {
+  font-size: 9px;
+  fill: var(--color-text-dark-secondary);
+  font-style: italic;
+  pointer-events: none;
+}
+
+/* ─── SVG Edges ──────────────────────────────────────────────────── */
+
+.mm-edge {
+  stroke: var(--color-border-primary, #888888);
+  stroke-width: 1.5;
+  fill: none;
+}
+
+.mm-dashed {
+  stroke-dasharray: 5 4;
+  opacity: 0.6;
+}
+
+/* ─── Floating Search Panel ──────────────────────────────────────── */
+
+.ddf-faction-manager .mm-search-panel {
+  position: absolute;
+  z-index: 200;
+  background: var(--color-bg-sheet);
+  border: 1px solid var(--color-border-primary);
+  border-radius: 4px;
+  padding: 8px;
+  min-width: 200px;
+  max-width: 260px;
+  box-shadow: 2px 4px 10px rgba(0, 0, 0, 0.45);
+}
+
+.ddf-faction-manager .mm-panel-title {
+  font-size: 0.8rem;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.7;
+  margin-bottom: 6px;
+}
+
+.ddf-faction-manager .mm-panel-hint {
+  font-weight: normal;
+  opacity: 0.5;
+  font-size: 0.75rem;
+}
+
+.ddf-faction-manager .mm-panel-options {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ddf-faction-manager .mm-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  text-align: left;
+  width: 100%;
+}
+
+.ddf-faction-manager .mm-option:hover {
+  background: var(--color-hover-bg);
+}
+
+.ddf-faction-manager .mm-search-input {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 4px;
+}
+
+.ddf-faction-manager .mm-search-results {
+  max-height: 150px;
+  overflow-y: auto;
+  margin-bottom: 4px;
+}
+
+.ddf-faction-manager .mm-search-result {
+  padding: 4px 8px;
+  cursor: pointer;
+  border-radius: 3px;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ddf-faction-manager .mm-search-result:hover {
+  background: var(--color-hover-bg);
+}
+
+.ddf-faction-manager .mm-result-type {
+  font-size: 0.7rem;
+  opacity: 0.5;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.ddf-faction-manager .mm-search-empty {
+  padding: 4px 8px;
+  font-style: italic;
+  font-size: 0.85rem;
+  opacity: 0.5;
+}
+
+.ddf-faction-manager .mm-direction-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-size: 0.8rem;
+  padding: 4px 0;
+  border-top: 1px solid var(--color-border-light-primary);
+  margin-top: 4px;
+}
+
+.ddf-faction-manager .mm-direction-row span {
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+
+.ddf-faction-manager .mm-direction-row label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.ddf-faction-manager .mm-panel-actions {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+  margin-top: 6px;
+}
+
+.ddf-faction-manager .mm-panel-actions button {
+  font-size: 0.8rem;
+}
+
+.ddf-faction-manager .mm-btn-confirm {
+  font-weight: bold;
+}
+
+/* ─── Node Context Menu ──────────────────────────────────────────── */
+
+.ddf-faction-manager .mm-node-menu {
+  position: absolute;
+  z-index: 200;
+  background: var(--color-bg-sheet);
+  border: 1px solid var(--color-border-primary);
+  border-radius: 4px;
+  overflow: hidden;
+  box-shadow: 2px 4px 10px rgba(0, 0, 0, 0.45);
+  min-width: 160px;
+}
+
+.ddf-faction-manager .mm-node-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 12px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.875rem;
+  text-align: left;
+}
+
+.ddf-faction-manager .mm-node-menu-item:hover {
+  background: var(--color-hover-bg);
+}
+
+.ddf-faction-manager .mm-node-menu-item.mm-danger {
+  color: var(--color-level-error, #c0392b);
+}
+
+.ddf-faction-manager .mm-node-menu-item.mm-disabled {
+  opacity: 0.45;
+  cursor: default;
+  font-style: italic;
+}
+
+/* ─── Projects Tab: Two-Pane Layout ──────────────────────────────── */
+
+.ddf-faction-manager .projects-layout {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Left pane */
+.ddf-faction-manager .project-list {
+  width: 165px;
+  min-width: 120px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--color-border-light-primary);
+  background: var(--color-bg-option);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.ddf-faction-manager .project-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  font-weight: bold;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--color-border-light-primary);
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+
+.ddf-faction-manager .project-list-header button {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  opacity: 0.8;
+}
+
+.ddf-faction-manager .project-list-header button:hover { opacity: 1; }
+
+.ddf-faction-manager .project-section {
+  flex-shrink: 0;
+}
+
+.ddf-faction-manager .project-section-label {
+  margin: 0;
+  padding: 5px 10px 3px;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.5;
+  border-bottom: 1px solid var(--color-border-light-primary);
+}
+
+.ddf-faction-manager .project-items {
+  list-style: none;
+  margin: 0;
+  padding: 2px 0;
+  overflow-y: auto;
+}
+
+.ddf-faction-manager .project-empty {
+  padding: 4px 12px;
+  font-style: italic;
+  font-size: 0.8rem;
+  opacity: 0.45;
+}
+
+.ddf-faction-manager .project-item {
+  padding: 5px 10px;
+  cursor: pointer;
+  border-radius: 3px;
+  margin: 1px 4px;
+  transition: background 0.1s;
+}
+
+.ddf-faction-manager .project-item:hover {
+  background: var(--color-hover-bg);
+}
+
+.ddf-faction-manager .project-item.selected {
+  background: var(--color-bg-btn);
+  color: var(--color-text-light-heading);
+}
+
+.ddf-faction-manager .project-name {
+  display: block;
+  font-size: 0.875rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ddf-faction-manager .project-item.finished .project-name {
+  opacity: 0.65;
+}
+
+/* Quarter bars */
+.ddf-faction-manager .quarter-bars {
+  display: flex;
+  gap: 2px;
+  margin-top: 4px;
+}
+
+.ddf-faction-manager .quarter-bar {
+  flex: 1;
+  height: 5px;
+  border-radius: 2px;
+  overflow: hidden;
+  position: relative;
+  background: rgba(128, 128, 128, 0.25);
+}
+
+.ddf-faction-manager .quarter-bar.filled {
+  background: var(--color-level-success, #4a9f4a);
+  border-color: var(--color-level-success, #4a9f4a);
+  opacity: 1;
+}
+
+.ddf-faction-manager .quarter-bar.finished.filled {
+  background: var(--color-text-dark-secondary);
+  border-color: var(--color-text-dark-secondary);
+  opacity: 0.5;
+}
+
+.ddf-faction-manager .quarter-bar-partial {
+  position: absolute;
+  inset: 0;
+  background: var(--color-level-success, #4a9f4a);
+  opacity: 0.7;
+}
+
+.ddf-faction-manager .quarter-bar.finished .quarter-bar-partial {
+  background: var(--color-text-dark-secondary);
+}
+
+/* ─── Projects Tab: Right Pane ───────────────────────────────────── */
+
+.ddf-faction-manager .project-detail {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--color-bg-sheet) 92%, var(--color-shadow-primary, #000) 8%);
+}
+
+.ddf-faction-manager .project-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--color-border-light-primary);
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+.ddf-faction-manager .project-detail-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  flex: 1;
+  border: none;
+}
+
+.ddf-faction-manager .project-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.ddf-faction-manager .project-progress-value {
+  font-size: 0.85rem;
+  font-weight: bold;
+  opacity: 0.7;
+  min-width: 36px;
+  text-align: right;
+}
+
+.ddf-faction-manager .project-header-actions button {
+  font-size: 0.8rem;
+}
+
+/* Overview + Notes sections */
+.ddf-faction-manager .project-overview-section {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 14px;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.ddf-faction-manager .project-notes-section {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+  gap: 0;
+}
+
+.ddf-faction-manager .project-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ddf-faction-manager .project-section-header label {
+  font-weight: bold;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.7;
+}
+
+.ddf-faction-manager .project-section-header button {
+  font-size: 0.8rem;
+}
+
+.ddf-faction-manager .overview-edit-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.ddf-faction-manager .overview-display {
+  min-height: 3em;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  border: 1px solid transparent;
+}
+
+.ddf-faction-manager .overview-display.empty {
+  border: 1px dashed var(--color-border-light-primary);
+}
+
+.ddf-faction-manager .overview-empty-hint {
+  opacity: 0.45;
+  font-style: italic;
+}
+
+.ddf-faction-manager .project-overview-textarea {
+  width: 100%;
+  resize: vertical;
+  box-sizing: border-box;
+  font-family: inherit;
+  font-size: 0.9rem;
+}
+
+/* ─── Note Preset Buttons (inside DialogV2) ──────────────────────── */
+
+.ddf-note-presets {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+/* Hide the actual radio input */
+.ddf-note-presets .ddf-preset-btn input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+/* Style the label as a button */
+.ddf-note-presets .ddf-preset-btn {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 3px 10px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  border: 1px solid var(--color-border-light-primary);
+  border-radius: 3px;
+  opacity: 0.7;
+  transition: opacity 0.1s;
+  user-select: none;
+}
+
+.ddf-note-presets .ddf-preset-btn:hover {
+  opacity: 1;
+}
+
+/* Selected preset — blue outline */
+.ddf-note-presets .ddf-preset-btn:has(input:checked) {
+  opacity: 1;
+  outline: 2px solid #4a90d9;
+  outline-offset: 1px;
+  border-color: #4a90d9;
+}
+
+.ddf-note-presets input[type="number"] {
+  width: 80px;
+  flex: 0 0 80px;
+  min-width: 0;
+  outline: 2px solid transparent;
+  outline-offset: 1px;
+  transition: outline-color 0.1s;
+}
+
+/* Custom field active — blue outline when it has a value */
+.ddf-note-presets input[type="number"]:not(:placeholder-shown) {
+  outline-color: #4a90d9;
+}
+
+/* ─── Inline Note Draft Editor ───────────────────────────────────── */
+
+.ddf-faction-manager .note-draft {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--color-border-light-primary);
+  flex-shrink: 0;
+}
+
+.ddf-faction-manager .note-draft-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ddf-faction-manager .note-draft-header label {
+  font-weight: bold;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.7;
+}
+
+.ddf-faction-manager .note-draft-header button {
+  font-size: 0.8rem;
+}
+
+.ddf-faction-manager .note-draft-presets {
+  /* inherits .ddf-note-presets flex layout */
+}
+
+.ddf-faction-manager .note-draft-textarea {
+  width: 100%;
+  resize: none;
+  box-sizing: border-box;
+  font-family: inherit;
+  font-size: 0.875rem;
+  rows: 3;
+  min-height: 4.5em;
+  max-height: 10em;
+}
+
+/* Notes log */
+.ddf-faction-manager .project-notes-log {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-right: 4px;
+}
+
+.ddf-faction-manager .note-entry {
+  border: 1px solid var(--color-border-light-primary);
+  border-radius: 4px;
+  overflow: hidden;
+  flex-shrink: 0;
+  transition: opacity 0.15s;
+}
+
+.ddf-faction-manager .note-entry.is-editing {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.ddf-faction-manager .note-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 3px 8px;
+  background: var(--color-bg-option);
+  border-bottom: 1px solid var(--color-border-light-primary);
+  font-size: 0.75rem;
+}
+
+.ddf-faction-manager .note-date {
+  opacity: 0.6;
+  flex: 1;
+}
+
+.ddf-faction-manager .note-delta {
+  font-weight: bold;
+  font-size: 0.8rem;
+}
+
+.ddf-faction-manager .note-delta.positive { color: var(--color-level-success, #4a9f4a); }
+.ddf-faction-manager .note-delta.negative { color: var(--color-level-error, #c0392b); }
+.ddf-faction-manager .note-delta.neutral  { opacity: 0.5; }
+
+.ddf-faction-manager .note-controls {
+  display: none;
+  align-items: center;
+  gap: 2px;
+  margin-left: 6px;
+}
+
+.ddf-faction-manager .note-entry:hover .note-controls {
+  display: flex;
+}
+
+.ddf-faction-manager .note-controls a {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  font-size: 0.7rem;
+  border-radius: 3px;
+  cursor: pointer;
+  opacity: 0.6;
+}
+
+.ddf-faction-manager .note-controls a:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.ddf-faction-manager .note-text {
+  margin: 0;
+  padding: 6px 8px;
+  font-size: 0.875rem;
+  white-space: pre-wrap;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   FACTION DETAIL APP  (.ddf-faction-detail)
+   ═══════════════════════════════════════════════════════════════════ */
+
+.ddf-faction-detail .window-content {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* Layout wrapper */
+.ddf-faction-detail .ddf-detail-layout {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Tab nav (shared look) */
+.ddf-faction-detail .ddf-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 4px 8px 0;
+  border-bottom: 1px solid var(--color-border-light-primary);
+  flex-shrink: 0;
+}
+
+.ddf-faction-detail .ddf-tab-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  margin-bottom: -1px;
+  cursor: pointer;
+  border-radius: 4px 4px 0 0;
+  border-bottom: 2px solid transparent;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  opacity: 0.55;
+  transition: opacity 0.15s;
+}
+
+.ddf-faction-detail .ddf-tab-item:hover { opacity: 0.85; }
+
+.ddf-faction-detail .ddf-tab-item.active {
+  opacity: 1;
+  font-weight: bold;
+  border-bottom-color: var(--color-text-dark-primary);
+}
+
+/* Tab sections */
+.ddf-faction-detail .ddf-tab-sections {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.ddf-faction-detail .tab {
+  display: none;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.ddf-faction-detail .tab.active { display: flex; }
+
+/* ─── Overview Tab: Header + Stats + Two-Pane ────────────────────── */
+
+/* Full-width faction name header */
+.ddf-faction-detail .faction-overview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--color-border-light-primary);
+  flex-shrink: 0;
+}
+
+.ddf-faction-detail .faction-overview-title {
+  margin: 0;
+  font-size: 1.1rem;
+  border: none;
+}
+
+.ddf-faction-detail .faction-open-journal-btn { font-size: 0.8rem; }
+
+/* Full-width stats bar */
+.ddf-faction-detail .faction-stats-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  border-bottom: 1px solid var(--color-border-light-primary);
+  flex-shrink: 0;
+  background: color-mix(in srgb, var(--color-bg-option) 60%, transparent);
+}
+
+.ddf-faction-detail .faction-stat-item {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 14px;
+  flex: 1;
+  min-width: 100px;
+  border-right: 1px solid var(--color-border-light-primary);
+}
+
+.ddf-faction-detail .faction-stat-item:last-child {
+  border-right: none;
+}
+
+.ddf-faction-detail .faction-stat-label {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: bold;
+  opacity: 0.55;
+  margin-bottom: 2px;
+  white-space: nowrap;
+}
+
+.ddf-faction-detail .faction-stat-input {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid transparent;
+  padding: 1px 0;
+  font-size: 0.88rem;
+  color: inherit;
+  width: 100%;
+  transition: border-color 0.15s;
+}
+
+.ddf-faction-detail .faction-stat-input:hover {
+  border-bottom-color: var(--color-border-light-primary);
+}
+
+.ddf-faction-detail .faction-stat-input:focus {
+  outline: none;
+  border-bottom-color: var(--color-text-dark-primary);
+}
+
+.ddf-faction-detail .faction-stat-input::placeholder {
+  opacity: 0.3;
+  font-style: italic;
+}
+
+/* Two-pane layout below header + stats */
+.ddf-faction-detail .faction-overview-layout {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* Left: journal body */
+.ddf-faction-detail .faction-journal-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-right: 1px solid var(--color-border-light-primary);
+}
+
+.ddf-faction-detail .faction-journal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px;
+}
+
+/* Right: connections pane */
+.ddf-faction-detail .faction-connections-pane {
+  width: 165px;
+  min-width: 120px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg-option);
+  overflow: hidden;
+}
+
+.ddf-faction-detail .faction-connections-body {
+  overflow-y: auto;
+  flex: 1;
+  padding: 4px 0;
+}
+
+/* No-selection placeholder */
+.ddf-faction-detail .faction-no-selection {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  opacity: 0.35;
+}
+
+.ddf-faction-detail .faction-no-selection i { font-size: 3rem; }
+
+/* ─── Shared component styles scoped to FactionDetailApp ─────────── */
+
+/* Relationship list items (in connections pane) */
+.ddf-faction-detail .rel-list-header {
+  padding: 6px 10px;
+  font-weight: bold;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.7;
+  border-bottom: 1px solid var(--color-border-light-primary);
+  flex-shrink: 0;
+}
+
+.ddf-faction-detail .rel-list-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  font-size: 0.82rem;
+  border-radius: 3px;
+  margin: 1px 4px;
+}
+
+.ddf-faction-detail .rel-list-item.rel-auto {
+  opacity: 0.65;
+  font-style: italic;
+}
+
+/* Parent-faction link row — gold accent, full opacity */
+.ddf-faction-detail .rel-list-item.rel-parent-link {
+  opacity: 1;
+  font-style: normal;
+  font-weight: 600;
+  border-left: 2px solid #B8860B;
+  padding-left: 6px;
+  background: color-mix(in srgb, #FFD700 8%, transparent);
+}
+
+.ddf-faction-detail .rel-parent-link .rel-type-icon {
+  opacity: 1;
+  color: #B8860B;
+}
+
+.ddf-faction-detail .rel-parent-link .rel-name {
+  color: #B8860B;
+}
+
+/* Break-link button */
+.ddf-faction-detail .rel-break-btn {
+  flex-shrink: 0;
+  opacity: 0.4;
+  font-size: 0.75rem;
+  padding: 2px 4px;
+  min-height: unset;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.ddf-faction-detail .rel-break-btn:hover {
+  opacity: 1;
+  color: var(--color-level-error, #c00);
+}
+
+.ddf-faction-detail .rel-type-icon {
+  flex-shrink: 0;
+  width: 14px;
+  text-align: center;
+  font-size: 0.75rem;
+  opacity: 0.65;
+}
+
+.ddf-faction-detail .rel-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.ddf-faction-detail .rel-dir {
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  opacity: 0.55;
+}
+
+.ddf-faction-detail .rel-color-swatch {
+  flex-shrink: 0;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 1.5px solid var(--color-border-primary);
+  cursor: pointer;
+  position: relative;
+  display: block;
+}
+
+.ddf-faction-detail .rel-color-swatch.rel-color-unset {
+  background: transparent;
+  border-style: dashed;
+}
+
+.ddf-faction-detail .rel-color-input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+  padding: 0;
+  border: none;
+}
+
+.ddf-faction-detail .rel-list-empty {
+  padding: 10px 12px;
+  font-style: italic;
+  font-size: 0.8rem;
+  opacity: 0.5;
+  line-height: 1.6;
+}
+
+/* Projects tab — reuse all .ddf-faction-manager project styles */
+.ddf-faction-detail .projects-layout {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.ddf-faction-detail .project-list {
+  width: 165px;
+  min-width: 120px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--color-border-light-primary);
+  background: var(--color-bg-option);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.ddf-faction-detail .project-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  font-weight: bold;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--color-border-light-primary);
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+
+.ddf-faction-detail .project-list-header button {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  opacity: 0.8;
+}
+
+.ddf-faction-detail .project-list-header button:hover { opacity: 1; }
+
+.ddf-faction-detail .project-section { flex-shrink: 0; }
+
+.ddf-faction-detail .project-section-label {
+  margin: 0;
+  padding: 5px 10px 3px;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.5;
+  border-bottom: 1px solid var(--color-border-light-primary);
+}
+
+.ddf-faction-detail .project-items {
+  list-style: none;
+  margin: 0;
+  padding: 2px 0;
+  overflow-y: auto;
+}
+
+.ddf-faction-detail .project-empty {
+  padding: 4px 12px;
+  font-style: italic;
+  font-size: 0.8rem;
+  opacity: 0.45;
+}
+
+.ddf-faction-detail .project-item {
+  padding: 5px 10px;
+  cursor: pointer;
+  border-radius: 3px;
+  margin: 1px 4px;
+  transition: background 0.1s;
+}
+
+.ddf-faction-detail .project-item:hover { background: var(--color-hover-bg); }
+
+.ddf-faction-detail .project-item.selected {
+  background: var(--color-bg-btn);
+  color: var(--color-text-light-heading);
+}
+
+.ddf-faction-detail .project-name {
+  display: block;
+  font-size: 0.875rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ddf-faction-detail .project-item.finished .project-name { opacity: 0.65; }
+
+.ddf-faction-detail .quarter-bars { display: flex; gap: 2px; margin-top: 4px; }
+
+.ddf-faction-detail .quarter-bar {
+  flex: 1;
+  height: 5px;
+  border-radius: 2px;
+  overflow: hidden;
+  position: relative;
+  background: rgba(128, 128, 128, 0.25);
+}
+
+.ddf-faction-detail .quarter-bar.filled {
+  background: var(--color-level-success, #4a9f4a);
+}
+
+.ddf-faction-detail .quarter-bar.finished.filled {
+  background: var(--color-text-dark-secondary);
+  opacity: 0.5;
+}
+
+.ddf-faction-detail .quarter-bar-partial {
+  position: absolute;
+  inset: 0;
+  background: var(--color-level-success, #4a9f4a);
+  opacity: 0.7;
+}
+
+.ddf-faction-detail .quarter-bar.finished .quarter-bar-partial {
+  background: var(--color-text-dark-secondary);
+}
+
+.ddf-faction-detail .project-detail {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--color-bg-sheet) 92%, var(--color-shadow-primary, #000) 8%);
+}
+
+.ddf-faction-detail .project-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--color-border-light-primary);
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+.ddf-faction-detail .project-detail-header h3 { margin: 0; font-size: 1rem; flex: 1; border: none; }
+
+.ddf-faction-detail .project-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.ddf-faction-detail .project-progress-value {
+  font-size: 0.85rem;
+  font-weight: bold;
+  opacity: 0.7;
+  min-width: 36px;
+  text-align: right;
+}
+
+.ddf-faction-detail .project-header-actions button { font-size: 0.8rem; }
+
+.ddf-faction-detail .project-overview-section {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 14px;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.ddf-faction-detail .project-notes-section {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+.ddf-faction-detail .project-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ddf-faction-detail .project-section-header label {
+  font-weight: bold;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.7;
+}
+
+.ddf-faction-detail .project-section-header button { font-size: 0.8rem; }
+.ddf-faction-detail .overview-edit-actions { display: flex; gap: 4px; }
+
+.ddf-faction-detail .overview-display {
+  min-height: 3em;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  border: 1px solid transparent;
+}
+
+.ddf-faction-detail .overview-display.empty { border: 1px dashed var(--color-border-light-primary); }
+.ddf-faction-detail .overview-empty-hint { opacity: 0.45; font-style: italic; }
+
+.ddf-faction-detail .project-overview-textarea {
+  width: 100%;
+  resize: vertical;
+  box-sizing: border-box;
+  font-family: inherit;
+  font-size: 0.9rem;
+}
+
+.ddf-faction-detail .note-draft {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--color-border-light-primary);
+  flex-shrink: 0;
+}
+
+.ddf-faction-detail .note-draft-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ddf-faction-detail .note-draft-header label {
+  font-weight: bold;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.7;
+}
+
+.ddf-faction-detail .note-draft-header button { font-size: 0.8rem; }
+
+.ddf-faction-detail .note-draft-textarea {
+  width: 100%;
+  resize: none;
+  box-sizing: border-box;
+  font-family: inherit;
+  font-size: 0.875rem;
+  min-height: 4.5em;
+  max-height: 10em;
+}
+
+.ddf-faction-detail .project-notes-log {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-right: 4px;
+}
+
+.ddf-faction-detail .note-entry {
+  border: 1px solid var(--color-border-light-primary);
+  border-radius: 4px;
+  overflow: hidden;
+  flex-shrink: 0;
+  transition: opacity 0.15s;
+}
+
+.ddf-faction-detail .note-entry.is-editing { opacity: 0.4; pointer-events: none; }
+
+.ddf-faction-detail .note-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 3px 8px;
+  background: var(--color-bg-option);
+  border-bottom: 1px solid var(--color-border-light-primary);
+  font-size: 0.75rem;
+}
+
+.ddf-faction-detail .note-date { opacity: 0.6; flex: 1; }
+.ddf-faction-detail .note-delta { font-weight: bold; font-size: 0.8rem; }
+.ddf-faction-detail .note-delta.positive { color: var(--color-level-success, #4a9f4a); }
+.ddf-faction-detail .note-delta.negative { color: var(--color-level-error, #c0392b); }
+.ddf-faction-detail .note-delta.neutral  { opacity: 0.5; }
+
+.ddf-faction-detail .note-controls {
+  display: none;
+  align-items: center;
+  gap: 2px;
+  margin-left: 6px;
+}
+
+.ddf-faction-detail .note-entry:hover .note-controls { display: flex; }
+
+.ddf-faction-detail .note-controls a {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  font-size: 0.7rem;
+  border-radius: 3px;
+  cursor: pointer;
+  opacity: 0.6;
+}
+
+.ddf-faction-detail .note-controls a:hover { opacity: 1; background: rgba(0, 0, 0, 0.1); }
+
+.ddf-faction-detail .note-text {
+  margin: 0;
+  padding: 6px 8px;
+  font-size: 0.875rem;
+  white-space: pre-wrap;
+}
+
+/* Floating panels in FactionDetailApp */
+.ddf-faction-detail .mm-search-panel,
+.ddf-faction-detail .mm-node-menu {
+  position: absolute;
+  z-index: 200;
+  background: var(--color-bg-sheet);
+  border: 1px solid var(--color-border-primary);
+  border-radius: 4px;
+  box-shadow: 2px 4px 10px rgba(0, 0, 0, 0.45);
+}
+
+.ddf-faction-detail .mm-search-panel { padding: 8px; min-width: 200px; max-width: 260px; }
+.ddf-faction-detail .mm-node-menu { overflow: hidden; min-width: 160px; }
+
+.ddf-faction-detail .mm-panel-title {
+  font-size: 0.8rem;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.7;
+  margin-bottom: 6px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   GLOBAL RELATIONSHIPS APP  (.ddf-global-relationships)
+   ═══════════════════════════════════════════════════════════════════ */
+
+.ddf-global-relationships .window-content {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+
+.ddf-global-relationships .global-rel-root {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.ddf-global-relationships .global-rel-layout {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* Left pane: faction list / POV switcher */
+.ddf-global-relationships .global-rel-faction-list {
+  width: 160px;
+  min-width: 120px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--color-border-light-primary);
+  background: var(--color-bg-option);
+  overflow: hidden;
+}
+
+.ddf-global-relationships .global-rel-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  font-weight: bold;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.7;
+  border-bottom: 1px solid var(--color-border-light-primary);
+  flex-shrink: 0;
+}
+
+.ddf-global-relationships .global-rel-pov-hint {
+  font-weight: normal;
+  font-size: 0.7rem;
+  opacity: 0.6;
+  font-style: italic;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.ddf-global-relationships .global-rel-faction-list {
+  overflow-y: auto;
+}
+
+.ddf-global-relationships .global-rel-faction-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  border-radius: 3px;
+  margin: 1px 4px;
+  transition: background 0.1s;
+}
+
+.ddf-global-relationships .global-rel-faction-item:hover {
+  background: var(--color-hover-bg);
+}
+
+.ddf-global-relationships .global-rel-faction-item.selected {
+  background: color-mix(in srgb, #FFD700 20%, var(--color-bg-option));
+  font-weight: bold;
+}
+
+.ddf-global-relationships .global-rel-faction-item i {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  opacity: 0.55;
+}
+
+.ddf-global-relationships .global-rel-faction-item.selected i {
+  opacity: 1;
+  color: #B8860B;
+}
+
+.ddf-global-relationships .global-rel-faction-item.is-subfaction {
+  padding-left: 26px;
+  font-size: 0.82rem;
+  opacity: 0.85;
+}
+
+.ddf-global-relationships .global-rel-faction-item.is-subfaction > .fa-solid {
+  font-size: 0.65rem;
+}
+
+.ddf-global-relationships .global-rel-faction-item.is-hidden {
+  display: none;
+}
+
+/* Collapse/expand button inside parent faction rows */
+.ddf-global-relationships .global-rel-collapse-btn {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  padding: 0 2px;
+  width: 16px;
+  cursor: pointer;
+  font-size: 0.65rem;
+  opacity: 0.5;
+  line-height: 1;
+  min-height: unset;
+}
+.ddf-global-relationships .global-rel-collapse-btn:hover { opacity: 1; }
+
+/* Spacer so sub-faction rows align with sibling rows that have the button */
+.ddf-global-relationships .global-rel-indent-spacer {
+  display: inline-block;
+  width: 16px;
+  flex-shrink: 0;
+}
+
+/* Drag-and-drop visual feedback */
+.ddf-global-relationships .global-rel-faction-item.drag-source {
+  opacity: 0.4;
+}
+.ddf-global-relationships .global-rel-faction-item.drag-target {
+  outline: 2px dashed var(--color-border-highlight, #888);
+  outline-offset: -2px;
+}
+
+.ddf-global-relationships .global-rel-faction-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ddf-global-relationships .global-rel-empty {
+  padding: 10px 12px;
+  font-style: italic;
+  font-size: 0.8rem;
+  opacity: 0.5;
+}
+
+/* Canvas and hint — same as existing rel tab */
+.ddf-global-relationships .relationship-canvas-wrap {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--color-bg-sheet) 95%, var(--color-shadow-primary, #000) 5%);
+}
+
+.ddf-global-relationships .relationship-canvas-wrap svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+}
+
+.ddf-global-relationships .relationship-canvas-wrap svg:active {
+  cursor: grabbing;
+}
+
+.ddf-global-relationships .relationship-hint {
+  flex-shrink: 0;
+  padding: 4px 12px;
+  font-size: 0.75rem;
+  opacity: 0.45;
+  border-top: 1px solid var(--color-border-light-primary);
+  text-align: center;
+}
+
+.ddf-global-relationships .relationship-hint kbd {
+  font-family: inherit;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  padding: 0 4px;
+  font-size: 0.7rem;
+}
+
+/* Floating panels in GlobalRelationshipsApp */
+.ddf-global-relationships .mm-search-panel {
+  position: absolute;
+  z-index: 200;
+  background: var(--color-bg-sheet);
+  border: 1px solid var(--color-border-primary);
+  border-radius: 4px;
+  padding: 8px;
+  min-width: 200px;
+  max-width: 260px;
+  box-shadow: 2px 4px 10px rgba(0, 0, 0, 0.45);
+}
+
+.ddf-global-relationships .mm-node-menu {
+  position: absolute;
+  z-index: 200;
+  background: var(--color-bg-sheet);
+  border: 1px solid var(--color-border-primary);
+  border-radius: 4px;
+  overflow: hidden;
+  box-shadow: 2px 4px 10px rgba(0, 0, 0, 0.45);
+  min-width: 160px;
+}
+
+.ddf-global-relationships .mm-panel-title {
+  font-size: 0.8rem;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.7;
+  margin-bottom: 6px;
+}
+
+.ddf-global-relationships .mm-panel-hint { font-weight: normal; opacity: 0.5; font-size: 0.75rem; }
+
+.ddf-global-relationships .mm-panel-hint-text {
+  font-size: 0.82rem;
+  opacity: 0.7;
+  font-style: italic;
+  margin: 4px 0 8px;
+  line-height: 1.4;
+}
+
+.ddf-global-relationships .mm-panel-options { display: flex; flex-direction: column; gap: 2px; }
+
+.ddf-global-relationships .mm-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  text-align: left;
+  width: 100%;
+}
+
+.ddf-global-relationships .mm-option:hover { background: var(--color-hover-bg); }
+
+.ddf-global-relationships .mm-search-input {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 4px;
+}
+
+.ddf-global-relationships .mm-search-results {
+  max-height: 150px;
+  overflow-y: auto;
+  margin-bottom: 4px;
+}
+
+.ddf-global-relationships .mm-search-result {
+  padding: 4px 8px;
+  cursor: pointer;
+  border-radius: 3px;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ddf-global-relationships .mm-search-result:hover { background: var(--color-hover-bg); }
+
+.ddf-global-relationships .mm-result-type {
+  font-size: 0.7rem;
+  opacity: 0.5;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.ddf-global-relationships .mm-search-empty {
+  padding: 4px 8px;
+  font-style: italic;
+  font-size: 0.85rem;
+  opacity: 0.5;
+}
+
+.ddf-global-relationships .mm-direction-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-size: 0.8rem;
+  padding: 4px 0;
+  border-top: 1px solid var(--color-border-light-primary);
+  margin-top: 4px;
+}
+
+.ddf-global-relationships .mm-direction-row span { opacity: 0.6; flex-shrink: 0; }
+.ddf-global-relationships .mm-direction-row label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+
+.ddf-global-relationships .mm-panel-actions {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+  margin-top: 6px;
+}
+
+.ddf-global-relationships .mm-panel-actions button { font-size: 0.8rem; }
+.ddf-global-relationships .mm-btn-confirm { font-weight: bold; }
+
+.ddf-global-relationships .mm-node-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 12px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.875rem;
+  text-align: left;
+}
+
+.ddf-global-relationships .mm-node-menu-item:hover { background: var(--color-hover-bg); }
+
+/* ═══════════════════════════════════════════════════════════════════
+   SVG NODE TYPES — Global Mode
+   (mm-* classes are not scoped to an app, so they apply everywhere)
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* POV faction — gold fill + glow ring */
+.mm-node-type-pov .mm-shape {
+  fill: #FFD700;
+  stroke: #B8860B;
+  stroke-width: 3;
+  filter: drop-shadow(0 0 6px rgba(255, 215, 0, 0.6));
+}
+
+/* Standard global faction node — muted when no color override */
+.mm-node-type-faction-global .mm-shape {
+  fill: color-mix(in srgb, var(--color-bg-option) 80%, var(--color-shadow-primary, #000) 20%);
+  stroke: var(--color-border-primary);
+  stroke-width: 1.5;
+}
+
+/* POV faction label: dark text so it's readable on gold */
+.mm-node-type-pov .mm-node-label {
+  fill: #3a2800;
+  font-weight: bold;
+}
+
+/* Orbital rings around factions that have sub-factions */
+.mm-orbit-ring {
+  fill: none;
+  stroke: var(--color-border-primary, #888888);
+  stroke-width: 1.5;
+  stroke-dasharray: 8 5;
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+/* Spoke lines connecting each sub-faction node to its parent via the orbit ring */
+.mm-spoke-line {
+  stroke: var(--color-border-primary, #888888);
+  stroke-width: 1;
+  stroke-dasharray: 3 5;
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   INLINE SETTINGS CONTROLS  (.ddf-inline-stat-editor)
+   Injected into Foundry's native Game Settings panel via hook.
+   ═══════════════════════════════════════════════════════════════════ */
+
+.ddf-inline-stat-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
+.ddf-inline-stat-editor .ddf-stat-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 160px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.ddf-inline-stat-editor .ddf-stat-list-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  opacity: 0.65;
+  padding: 0 0 2px;
+}
+
+.ddf-inline-stat-editor .ddf-stat-list-header .ddf-stat-col-name    { flex: 1; }
+.ddf-inline-stat-editor .ddf-stat-list-header .ddf-stat-col-default { width: 56px; text-align: center; }
+.ddf-inline-stat-editor .ddf-stat-list-header .ddf-stat-col-sizekey {
+  width: 28px;
+  text-align: center;
+  display: none; /* hidden until "Single Value" mode */
+}
+
+.ddf-inline-stat-editor.ddf-sizekey-visible .ddf-stat-list-header .ddf-stat-col-sizekey {
+  display: block;
+}
+
+.ddf-inline-stat-editor .ddf-stat-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ddf-inline-stat-editor .ddf-stat-name {
+  flex: 1;
+  font-size: 0.85rem;
+  margin: 0;
+  height: unset;
+}
+
+.ddf-inline-stat-editor .ddf-stat-default {
+  width: 56px;
+  font-size: 0.85rem;
+  margin: 0;
+  height: unset;
+  text-align: center;
+}
+
+.ddf-inline-stat-editor .ddf-stat-sizekey-cell {
+  width: 28px;
+  display: none; /* hidden until "Single Value" mode */
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.ddf-inline-stat-editor.ddf-sizekey-visible .ddf-stat-sizekey-cell {
+  display: flex;
+}
+
+.ddf-inline-stat-editor .ddf-stat-delete {
+  flex-shrink: 0;
+  opacity: 0.5;
+  font-size: 0.8rem;
+  padding: 2px 6px;
+  min-height: unset;
+}
+
+.ddf-inline-stat-editor .ddf-stat-delete:hover {
+  opacity: 1;
+  color: var(--color-level-error, #c00);
+}
+
+.ddf-inline-stat-editor .ddf-add-stat-btn {
+  font-size: 0.8rem;
+  margin-top: 2px;
+  align-self: flex-start;
+  padding: 3px 10px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   CONNECTION TYPE SETTINGS EDITOR  (.ddf-inline-conntype-editor)
+   ═══════════════════════════════════════════════════════════════════ */
+
+.ddf-inline-conntype-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ddf-inline-conntype-editor .ddf-conntype-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.ddf-inline-conntype-editor .ddf-conntype-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ddf-inline-conntype-editor .ddf-conntype-name {
+  flex: 1;
+  font-size: 0.85rem;
+}
+
+.ddf-inline-conntype-editor .ddf-conntype-color {
+  width: 36px;
+  height: 24px;
+  padding: 1px 2px;
+  cursor: pointer;
+  border: 1px solid var(--color-border-dark-primary);
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.ddf-inline-conntype-editor .ddf-conntype-delete {
+  flex-shrink: 0;
+  opacity: 0.5;
+  font-size: 0.8rem;
+}
+
+.ddf-inline-conntype-editor .ddf-conntype-delete:hover {
+  opacity: 1;
+  color: var(--color-level-error, #c00);
+}
+
+.ddf-inline-conntype-editor .ddf-add-conntype-btn {
+  font-size: 0.8rem;
+  margin-top: 2px;
+  align-self: flex-start;
+  padding: 3px 10px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   CONNECTION TYPE BADGE  (.rel-type-badge)
+   Small colored pill shown on each stored connection in the detail pane.
+   ═══════════════════════════════════════════════════════════════════ */
+
+.rel-type-badge {
+  font-size: 0.62rem;
+  font-weight: bold;
+  letter-spacing: 0.02em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+  white-space: nowrap;
+  flex-shrink: 0;
+  line-height: 1.5;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   TYPE PICKER ROW  (.mm-type-row)
+   Shown inside Add Connection floating panels in the relationship map.
+   ═══════════════════════════════════════════════════════════════════ */
+
+.mm-type-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 0.82rem;
+  color: var(--color-text-dark-secondary);
+}
+
+.mm-type-row span {
+  white-space: nowrap;
+}
+
+.mm-type-row .mm-type-select {
+  flex: 1;
+  font-size: 0.82rem;
+  padding: 2px 4px;
+}

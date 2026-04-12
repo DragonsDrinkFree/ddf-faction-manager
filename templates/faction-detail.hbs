@@ -1,0 +1,295 @@
+<div class="ddf-detail-layout">
+
+  {{!-- Tab Nav --}}
+  <nav class="ddf-tabs">
+    {{#each tabs}}
+    <a class="ddf-tab-item {{cssClass}}" data-action="switchTab" data-tab="{{id}}">
+      <i class="{{icon}}"></i>
+      <span>{{label}}</span>
+    </a>
+    {{/each}}
+  </nav>
+
+  <div class="ddf-tab-sections">
+
+    {{!-- Overview Tab: Header + Stats + Journal (left) + Connections (right) --}}
+    <section class="tab overview {{#if (eq activeTab "overview")}}active{{/if}}" data-tab="overview">
+      {{#if selectedFaction}}
+
+        {{!-- Full-width header: faction name + Open Journal button --}}
+        <div class="faction-overview-header">
+          <h2 class="faction-overview-title">{{selectedFaction.name}}</h2>
+          <button type="button" class="faction-open-journal-btn" data-action="openJournal" title="Open in Journal">
+            <i class="fa-solid fa-book-open"></i> Open Journal
+          </button>
+        </div>
+
+        {{!-- Full-width stats bar --}}
+        {{#if statDefinitions.length}}
+        <div class="faction-stats-bar">
+          {{#each statDefinitions}}
+            <div class="faction-stat-item">
+              <span class="faction-stat-label">{{name}}</span>
+              <input type="text"
+                     class="faction-stat-input"
+                     data-stat-id="{{id}}"
+                     value="{{lookup ../factionStats id}}"
+                     placeholder="—" />
+            </div>
+          {{/each}}
+        </div>
+        {{/if}}
+
+        <div class="faction-overview-layout">
+
+          {{!-- Left: Journal body --}}
+          <div class="faction-journal-section">
+            <div class="faction-journal-body journal-entry-content">
+              {{#if journalContent}}
+                {{{journalContent}}}
+              {{else}}
+                <p class="hint">No journal content yet. Open the journal to add pages.</p>
+              {{/if}}
+            </div>
+          </div>
+
+          {{!-- Right: Connections pane --}}
+          <div class="faction-connections-pane">
+            <div class="rel-list-header">
+              <span>Connections</span>
+            </div>
+            <div class="faction-connections-body">
+              {{#each relationshipItems}}
+                <div class="rel-list-item{{#if isAuto}} rel-auto{{/if}}{{#if isParentLink}} rel-parent-link{{/if}}" data-edge-id="{{id}}">
+                  <i class="rel-type-icon {{icon}}"></i>
+                  <span class="rel-name" title="{{name}}">{{name}}</span>
+                  <span class="rel-dir">{{directionSymbol}}</span>
+                  {{#if isParentLink}}
+                    <button type="button" class="rel-break-btn icon"
+                            data-action="breakParentLink"
+                            data-parent-faction-id="{{parentFactionId}}"
+                            title="Break parent link">
+                      <i class="fa-solid fa-link-slash"></i>
+                    </button>
+                  {{/if}}
+                  {{#unless isAuto}}
+                    {{#if connectionTypeName}}
+                      <span class="rel-type-badge" style="background:{{connectionTypeColor}}">{{connectionTypeName}}</span>
+                    {{/if}}
+                    <label class="rel-color-swatch{{#unless color}} rel-color-unset{{/unless}}"
+                      title="Override color"
+                      style="{{#if color}}background:{{color}};{{/if}}">
+                      <input type="color" class="rel-color-input"
+                        value="{{#if color}}{{color}}{{else}}#888888{{/if}}"
+                        data-edge-id="{{id}}" />
+                    </label>
+                  {{/unless}}
+                </div>
+              {{else}}
+                <div class="rel-list-empty">
+                  <p>No connections yet.</p>
+                  <p>Use Faction Relationships to add one.</p>
+                </div>
+              {{/each}}
+            </div>
+          </div>
+
+        </div>
+      {{else}}
+        <div class="faction-no-selection">
+          <i class="fa-solid fa-shield-halved"></i>
+          <p>Select a faction to view details.</p>
+        </div>
+      {{/if}}
+    </section>
+
+    {{!-- Projects Tab --}}
+    <section class="tab projects {{#if (eq activeTab "projects")}}active{{/if}}" data-tab="projects">
+      {{#if selectedFaction}}
+        <div class="projects-layout">
+
+          {{!-- Left Pane: Project List --}}
+          <div class="project-list">
+            <div class="project-list-header">
+              <span>Projects</span>
+              <button type="button" class="icon" data-action="createProject" title="New Project">
+                <i class="fa-solid fa-plus"></i>
+              </button>
+            </div>
+
+            <div class="project-section">
+              <h4 class="project-section-label">Active</h4>
+              <ol class="project-items">
+                {{#each projects.active}}
+                  <li class="project-item {{#if (eq id ../selectedProjectId)}}selected{{/if}}"
+                      data-action="selectProject" data-project-id="{{id}}">
+                    <span class="project-name">{{name}}</span>
+                    <div class="quarter-bars">
+                      {{#each quarterBars}}
+                        <div class="quarter-bar {{#if filled}}filled{{/if}}">
+                          {{#unless filled}}{{#if partial}}
+                            <div class="quarter-bar-partial" style="width:{{partial}}%"></div>
+                          {{/if}}{{/unless}}
+                        </div>
+                      {{/each}}
+                    </div>
+                  </li>
+                {{else}}
+                  <li class="project-empty">None</li>
+                {{/each}}
+              </ol>
+            </div>
+
+            <div class="project-section">
+              <h4 class="project-section-label">Finished</h4>
+              <ol class="project-items">
+                {{#each projects.finished}}
+                  <li class="project-item finished {{#if (eq id ../selectedProjectId)}}selected{{/if}}"
+                      data-action="selectProject" data-project-id="{{id}}">
+                    <span class="project-name">{{name}}</span>
+                    <div class="quarter-bars">
+                      {{#each quarterBars}}
+                        <div class="quarter-bar finished {{#if filled}}filled{{/if}}">
+                          {{#unless filled}}{{#if partial}}
+                            <div class="quarter-bar-partial" style="width:{{partial}}%"></div>
+                          {{/if}}{{/unless}}
+                        </div>
+                      {{/each}}
+                    </div>
+                  </li>
+                {{else}}
+                  <li class="project-empty">None</li>
+                {{/each}}
+              </ol>
+            </div>
+          </div>
+
+          {{!-- Right Pane: Project Detail --}}
+          <div class="project-detail">
+            {{#if selectedProject}}
+
+              <div class="project-detail-header">
+                <h3>{{selectedProject.name}}</h3>
+                <div class="project-header-actions">
+                  <span class="project-progress-value">{{selectedProject.progress}}%</span>
+                  {{#if (eq selectedProject.status "active")}}
+                    <button type="button" data-action="finishProject">
+                      <i class="fa-solid fa-flag-checkered"></i> Finish
+                    </button>
+                  {{else}}
+                    <button type="button" data-action="reactivateProject">
+                      <i class="fa-solid fa-rotate-left"></i> Reactivate
+                    </button>
+                  {{/if}}
+                  <button type="button" data-action="deleteProject" title="Delete Project">
+                    <i class="fa-solid fa-trash"></i>
+                  </button>
+                </div>
+              </div>
+
+              {{!-- Project Overview: Display or Edit --}}
+              <div class="project-overview-section">
+                <div class="project-section-header">
+                  <label>Overview</label>
+                  {{#if editingOverview}}
+                    <div class="overview-edit-actions">
+                      <button type="button" data-action="saveOverview">
+                        <i class="fa-solid fa-floppy-disk"></i> Save
+                      </button>
+                      <button type="button" data-action="cancelOverview">
+                        <i class="fa-solid fa-xmark"></i> Cancel
+                      </button>
+                    </div>
+                  {{else}}
+                    <button type="button" data-action="editOverview">
+                      <i class="fa-solid fa-pen"></i> Edit
+                    </button>
+                  {{/if}}
+                </div>
+                {{#if editingOverview}}
+                  <textarea class="project-overview-textarea"
+                    rows="5"
+                    placeholder="Describe this project's goals...">{{selectedProject.description}}</textarea>
+                {{else}}
+                  <div class="overview-display {{#unless selectedProject.description}}empty{{/unless}}">
+                    {{#if selectedProject.description}}
+                      {{{selectedProject.enrichedDescription}}}
+                    {{else}}
+                      <span class="overview-empty-hint">No overview yet. Click Edit to add one.</span>
+                    {{/if}}
+                  </div>
+                {{/if}}
+              </div>
+
+              {{!-- Progress Log --}}
+              <div class="project-notes-section">
+
+                {{!-- Inline note editor --}}
+                <div class="note-draft">
+                  <div class="note-draft-header">
+                    <label>{{#if editingNoteId}}Editing Note{{else}}Progress Log{{/if}}</label>
+                    {{#if editingNoteId}}
+                      <button type="button" data-action="cancelNoteEdit">
+                        <i class="fa-solid fa-xmark"></i> Cancel
+                      </button>
+                    {{/if}}
+                  </div>
+                  <div class="note-draft-presets ddf-note-presets">
+                    <label class="ddf-preset-btn"><input type="radio" name="note_preset" value="10">+10%</label>
+                    <label class="ddf-preset-btn"><input type="radio" name="note_preset" value="25">+25%</label>
+                    <label class="ddf-preset-btn"><input type="radio" name="note_preset" value="50">+50%</label>
+                    <input type="number" name="note_custom" class="ddf-delta-custom"
+                      placeholder="Custom %" min="-100" max="100" />
+                    <button type="button" class="note-draft-save" data-action="saveInlineNote">
+                      <i class="fa-solid fa-floppy-disk"></i> Save
+                    </button>
+                  </div>
+                  <textarea class="note-draft-textarea"
+                    placeholder="Write a progress note… (Enter to save, Shift+Enter for new line)"></textarea>
+                </div>
+
+                {{!-- Log entries --}}
+                <div class="project-notes-log">
+                  {{#each selectedProject.notes}}
+                    <div class="note-entry {{#if (eq id ../editingNoteId)}}is-editing{{/if}}" data-note-id="{{id}}">
+                      <div class="note-header">
+                        <span class="note-date">{{formattedDate}}</span>
+                        <span class="note-delta {{deltaClass}}">{{formattedDelta}}</span>
+                        <div class="note-controls">
+                          <a class="icon" data-action="editNote" title="Edit Note">
+                            <i class="fa-solid fa-pen"></i>
+                          </a>
+                          <a class="icon" data-action="deleteNote" title="Delete Note">
+                            <i class="fa-solid fa-trash"></i>
+                          </a>
+                        </div>
+                      </div>
+                      <p class="note-text">{{text}}</p>
+                    </div>
+                  {{else}}
+                    <p class="hint">No notes yet — write one above.</p>
+                  {{/each}}
+                </div>
+
+              </div>
+
+            {{else}}
+              <div class="faction-no-selection">
+                <i class="fa-solid fa-list-check"></i>
+                <p>Select a project to view details.</p>
+              </div>
+            {{/if}}
+          </div>
+
+        </div>
+      {{else}}
+        <div class="faction-no-selection">
+          <i class="fa-solid fa-shield-halved"></i>
+          <p>Select a faction to view details.</p>
+        </div>
+      {{/if}}
+    </section>
+
+  </div>
+
+</div>

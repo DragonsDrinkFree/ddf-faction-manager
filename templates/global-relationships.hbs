@@ -1,0 +1,45 @@
+<div class="global-rel-root">
+
+  <div class="global-rel-layout">
+
+    {{!-- Left Pane: Faction List (POV Switcher) --}}
+    <div class="global-rel-faction-list">
+      <div class="global-rel-list-header">
+        <span>Factions</span>
+        {{#if povFactionId}}
+          <span class="global-rel-pov-hint">POV active</span>
+        {{/if}}
+      </div>
+      {{#each allFactions}}
+        <div class="global-rel-faction-item{{#if isPOV}} selected{{/if}}{{#if isSubFaction}} is-subfaction{{/if}}{{#if isHidden}} is-hidden{{/if}}"
+             data-faction-id="{{id}}"
+             title="{{name}}">
+          {{#if hasSubFactions}}
+            <button type="button" class="global-rel-collapse-btn" data-faction-id="{{id}}"
+                    title="{{#if isCollapsed}}Expand{{else}}Collapse{{/if}} sub-factions">
+              <i class="fa-solid fa-chevron-{{#if isCollapsed}}right{{else}}down{{/if}}"></i>
+            </button>
+          {{else}}
+            <span class="global-rel-indent-spacer"></span>
+          {{/if}}
+          <i class="fa-solid fa-shield-halved"></i>
+          <span class="global-rel-faction-name">{{name}}</span>
+        </div>
+      {{else}}
+        <div class="global-rel-empty">No factions yet.</div>
+      {{/each}}
+    </div>
+
+    {{!-- Right Pane: SVG Canvas --}}
+    <div class="relationship-canvas-wrap"></div>
+
+  </div>
+
+  <div class="relationship-hint">
+    Click node to set POV &nbsp;&middot;&nbsp;
+    Right-click canvas &mdash; <kbd>@</kbd> Faction &nbsp;<kbd>!</kbd> Document &nbsp;<kbd>#</kbd> Simple node
+    &nbsp;&middot;&nbsp; Drag node to reposition &nbsp;&middot;&nbsp;
+    Drag canvas to pan &nbsp;&middot;&nbsp; Scroll to zoom
+  </div>
+
+</div>
