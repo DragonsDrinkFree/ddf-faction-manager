@@ -2,6 +2,7 @@ import { FactionStore } from "./data/FactionStore.js";
 import { ProjectStore } from "./data/ProjectStore.js";
 import { RelationshipStore } from "./data/RelationshipStore.js";
 import { FolderStore } from "./data/FolderStore.js";
+import { MemberStore } from "./data/MemberStore.js";
 import { FactionsSidebarTab } from "./apps/FactionsSidebarTab.js";
 import { FactionDetailApp } from "./apps/FactionDetailApp.js";
 
@@ -13,6 +14,7 @@ Hooks.once("init", async () => {
   ProjectStore.register();
   RelationshipStore.register();
   FolderStore.register();
+  MemberStore.register();
 
   // ── Faction text enricher  (@Faction[id]{label}) ──────────────────────────────
   CONFIG.TextEditor.enrichers.push({

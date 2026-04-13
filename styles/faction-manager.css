@@ -2683,3 +2683,298 @@
   font-size: 0.8em;
   opacity: 0.8;
 }
+
+/* ─── Members Tab ──────────────────────────────────────────────────────────── */
+
+.ddf-faction-detail .members-layout {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ── Left Pane: Member List ── */
+.ddf-faction-detail .member-list {
+  width: 200px;
+  min-width: 160px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--color-border-light-primary);
+  overflow-y: auto;
+}
+
+.ddf-faction-detail .member-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  font-weight: bold;
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--color-border-light-primary);
+  flex-shrink: 0;
+}
+
+.ddf-faction-detail .member-list-actions {
+  display: flex;
+  gap: 2px;
+}
+
+.ddf-faction-detail .member-list-actions .icon {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-light-primary);
+}
+
+.ddf-faction-detail .member-list-actions .icon:hover {
+  color: var(--color-text-primary);
+}
+
+/* Rank section header */
+.ddf-faction-detail .member-rank-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 8px 4px;
+  background: color-mix(in srgb, var(--color-bg-option, #1a1a24) 100%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border-light-primary) 60%, transparent);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.ddf-faction-detail .member-rank-icon {
+  font-size: 0.6rem;
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+
+.ddf-faction-detail .member-rank-name {
+  flex: 1;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-light-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ddf-faction-detail .member-rank-controls {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.ddf-faction-detail .member-rank-header:hover .member-rank-controls {
+  opacity: 1;
+}
+
+.ddf-faction-detail .member-rank-controls .icon {
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  color: var(--color-text-light-primary);
+  cursor: pointer;
+}
+
+.ddf-faction-detail .member-rank-controls .icon:hover {
+  color: var(--color-text-primary);
+}
+
+/* Unranked section */
+.ddf-faction-detail .member-unranked .member-rank-name {
+  color: var(--color-text-dark-secondary, #666);
+  font-style: italic;
+}
+
+/* Member items */
+.ddf-faction-detail .member-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px 5px 18px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border-light-primary) 30%, transparent);
+  transition: background 0.1s;
+}
+
+.ddf-faction-detail .member-item:hover {
+  background: var(--color-bg-option);
+}
+
+.ddf-faction-detail .member-item.selected {
+  background: color-mix(in srgb, var(--color-bg-btn, #444) 60%, transparent);
+  color: var(--color-text-primary);
+}
+
+.ddf-faction-detail .member-item-icon {
+  font-size: 0.7rem;
+  opacity: 0.45;
+  flex-shrink: 0;
+}
+
+.ddf-faction-detail .member-item-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ddf-faction-detail .member-item-empty {
+  padding: 4px 18px;
+  font-size: 0.75rem;
+  font-style: italic;
+  color: var(--color-text-dark-secondary, #666);
+}
+
+.ddf-faction-detail .member-empty-hint {
+  padding: 16px 12px;
+  font-size: 0.8rem;
+  text-align: center;
+  color: var(--color-text-light-primary);
+  line-height: 1.8;
+}
+
+/* ── Right Pane: Member Detail ── */
+.ddf-faction-detail .member-detail {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+}
+
+.ddf-faction-detail .member-detail-header {
+  padding: 12px 16px 8px;
+  border-bottom: 1px solid var(--color-border-light-primary);
+  flex-shrink: 0;
+}
+
+.ddf-faction-detail .member-name-input {
+  width: 100%;
+  font-size: 1.15rem;
+  font-weight: bold;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid transparent;
+  color: var(--color-text-primary);
+  padding: 2px 4px;
+  transition: border-color 0.15s;
+}
+
+.ddf-faction-detail .member-name-input:hover,
+.ddf-faction-detail .member-name-input:focus {
+  border-bottom-color: var(--color-border-primary);
+  outline: none;
+  background: color-mix(in srgb, var(--color-bg-option) 50%, transparent);
+}
+
+.ddf-faction-detail .member-detail-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ddf-faction-detail .member-detail-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ddf-faction-detail .member-detail-label {
+  width: 56px;
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-light-primary);
+}
+
+.ddf-faction-detail .member-rank-select {
+  flex: 1;
+}
+
+.ddf-faction-detail .member-actor-linked {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+
+.ddf-faction-detail .member-actor-name {
+  flex: 1;
+  font-style: italic;
+}
+
+.ddf-faction-detail .ddf-link-actor-btn {
+  font-size: 0.8rem;
+  padding: 3px 8px;
+}
+
+.ddf-faction-detail .member-detail-footer {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid color-mix(in srgb, var(--color-border-light-primary) 50%, transparent);
+}
+
+.ddf-faction-detail .ddf-member-delete-btn {
+  font-size: 0.8rem;
+  color: var(--color-level-error, #c44);
+  background: none;
+  border: 1px solid color-mix(in srgb, var(--color-level-error, #c44) 60%, transparent);
+  padding: 4px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.ddf-faction-detail .ddf-member-delete-btn:hover {
+  background: color-mix(in srgb, var(--color-level-error, #c44) 15%, transparent);
+}
+
+/* ─── Add Member Panel ─────────────────────────────────────────────────────── */
+
+.ddf-member-add-panel .ddf-member-add-actions {
+  display: flex;
+  gap: 6px;
+  padding: 8px 0 0;
+  border-top: 1px solid var(--color-border-light-primary);
+  margin-top: 6px;
+}
+
+.ddf-member-add-panel .ddf-member-btn-unlinked,
+.ddf-member-add-panel .ddf-member-btn-new-actor {
+  flex: 1;
+  font-size: 0.78rem;
+  padding: 5px 6px;
+  white-space: nowrap;
+}
+
+.ddf-member-add-panel .mm-search-result.ddf-already-linked {
+  opacity: 0.45;
+  cursor: default;
+  pointer-events: none;
+}
+
+.ddf-linked-badge {
+  font-size: 0.68rem;
+  color: var(--color-text-light-primary);
+  font-style: italic;
+  margin-left: auto;
+  flex-shrink: 0;
+}

@@ -304,6 +304,134 @@
       {{/if}}
     </section>
 
+    {{!-- Members Tab --}}
+    <section class="tab members {{#if (eq activeTab "members")}}active{{/if}}" data-tab="members">
+      {{#if selectedFaction}}
+        <div class="members-layout">
+
+          {{!-- Left Pane: Member List --}}
+          <div class="member-list">
+            <div class="member-list-header">
+              <span>Members</span>
+              <div class="member-list-actions">
+                <button type="button" class="icon" data-action="addRank" title="Add Rank">
+                  <i class="fa-solid fa-layer-group"></i>
+                </button>
+                <button type="button" class="icon" data-action="addMember" title="Add Member">
+                  <i class="fa-solid fa-user-plus"></i>
+                </button>
+              </div>
+            </div>
+
+            {{#each membersByRank}}
+              <div class="member-rank-section{{#unless rankId}} member-unranked{{/unless}}"
+                   {{#if rankId}}data-rank-id="{{rankId}}"{{/if}}>
+
+                <div class="member-rank-header">
+                  <i class="fa-solid fa-chevron-right fa-fw member-rank-icon"></i>
+                  <span class="member-rank-name" title="{{rankDescription}}">{{rankName}}</span>
+                  {{#if rankId}}
+                    <div class="member-rank-controls">
+                      <a class="icon" data-action="editRank" data-rank-id="{{rankId}}" title="Edit rank">
+                        <i class="fa-solid fa-pen"></i>
+                      </a>
+                      <a class="icon" data-action="deleteRank" data-rank-id="{{rankId}}" title="Delete rank">
+                        <i class="fa-solid fa-trash"></i>
+                      </a>
+                    </div>
+                  {{/if}}
+                </div>
+
+                {{#each members}}
+                  <div class="member-item{{#if (eq id ../selectedMemberId)}} selected{{/if}}"
+                       data-action="selectMember" data-member-id="{{id}}">
+                    <i class="fa-solid fa-user fa-fw member-item-icon"></i>
+                    <span class="member-item-name">{{name}}</span>
+                  </div>
+                {{else}}
+                  <div class="member-item-empty">No members</div>
+                {{/each}}
+
+              </div>
+            {{else}}
+              <div class="member-empty-hint">
+                <p>No ranks or members yet.</p>
+                <p>Use <i class="fa-solid fa-layer-group"></i> to add a rank, or <i class="fa-solid fa-user-plus"></i> to add a member.</p>
+              </div>
+            {{/each}}
+          </div>
+
+          {{!-- Right Pane: Member Detail --}}
+          <div class="member-detail">
+            {{#if selectedMember}}
+
+              {{!-- Name header --}}
+              <div class="member-detail-header">
+                <input class="member-name-input"
+                       type="text"
+                       value="{{selectedMember.name}}"
+                       placeholder="Member name…" />
+              </div>
+
+              <div class="member-detail-body">
+
+                {{!-- Rank dropdown --}}
+                <div class="member-detail-row">
+                  <label class="member-detail-label">Rank</label>
+                  <select class="member-rank-select">
+                    <option value="">— None —</option>
+                    {{#each factionRanks}}
+                      <option value="{{id}}" {{#if (eq id ../selectedMember.rankId)}}selected{{/if}}>{{name}}</option>
+                    {{/each}}
+                  </select>
+                </div>
+
+                {{!-- Actor link --}}
+                <div class="member-detail-row">
+                  <label class="member-detail-label">Actor</label>
+                  {{#if selectedMember.actorUuid}}
+                    <div class="member-actor-linked">
+                      <span class="member-actor-name">{{selectedMember.actorName}}</span>
+                      <button type="button" class="icon" data-action="openMemberActor" title="Open actor sheet">
+                        <i class="fa-solid fa-external-link-alt"></i>
+                      </button>
+                      <button type="button" class="icon" data-action="unlinkMemberActor" title="Unlink actor">
+                        <i class="fa-solid fa-link-slash"></i>
+                      </button>
+                    </div>
+                  {{else}}
+                    <button type="button" class="ddf-link-actor-btn" data-action="linkMemberActor">
+                      <i class="fa-solid fa-link"></i> Link Actor
+                    </button>
+                  {{/if}}
+                </div>
+
+                {{!-- Delete --}}
+                <div class="member-detail-footer">
+                  <button type="button" class="ddf-member-delete-btn" data-action="deleteMember">
+                    <i class="fa-solid fa-user-minus"></i> Remove Member
+                  </button>
+                </div>
+
+              </div>
+
+            {{else}}
+              <div class="faction-no-selection">
+                <i class="fa-solid fa-users"></i>
+                <p>Select a member to view details.</p>
+              </div>
+            {{/if}}
+          </div>
+
+        </div>
+      {{else}}
+        <div class="faction-no-selection">
+          <i class="fa-solid fa-shield-halved"></i>
+          <p>Select a faction to view details.</p>
+        </div>
+      {{/if}}
+    </section>
+
   </div>
 
 </div>

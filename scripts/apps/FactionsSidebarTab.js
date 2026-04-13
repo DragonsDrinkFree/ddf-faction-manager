@@ -2,6 +2,7 @@ import { FactionStore } from "../data/FactionStore.js";
 import { FolderStore } from "../data/FolderStore.js";
 import { ProjectStore } from "../data/ProjectStore.js";
 import { RelationshipStore } from "../data/RelationshipStore.js";
+import { MemberStore } from "../data/MemberStore.js";
 import { FactionDetailApp } from "./FactionDetailApp.js";
 import { FolderConfigApp } from "./FolderConfigApp.js";
 import { GlobalRelationshipsApp } from "./GlobalRelationshipsApp.js";
@@ -209,6 +210,7 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
             for (const sub of subs) await deleteRecursive(sub.id);
             await ProjectStore.deleteForFaction(factionId);
             await RelationshipStore.cleanupFaction(factionId);
+            await MemberStore.cleanupFaction(factionId);
             await FactionStore.delete(factionId);
           };
           await deleteRecursive(id);
@@ -218,6 +220,7 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
           }
           await ProjectStore.deleteForFaction(id);
           await RelationshipStore.cleanupFaction(id);
+          await MemberStore.cleanupFaction(id);
           await FactionStore.delete(id);
         }
 
