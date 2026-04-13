@@ -104,7 +104,7 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
 
     // ── Header buttons ───────────────────────────────────────────────────────
     el.querySelector(".ddf-create-faction")?.addEventListener("click", async () => {
-      const name = await this.#promptName("New Faction", "Enter faction name:");
+      const name = await this.#promptName("New Faction", "Name");
       if (!name) return;
       await FactionStore.create(name, null);
       this.render();
@@ -157,8 +157,8 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
         if (!parentId) return;
         const parentName = FactionStore.getAll()[parentId]?.name ?? "faction";
         const name = await this.#promptName(
-          "New Sub-Faction",
-          `Enter sub-faction name (under ${parentName}):`
+          `New Sub-Faction (${parentName})`,
+          "Name"
         );
         if (!name) return;
         await FactionStore.create(name, parentId);
@@ -432,7 +432,15 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
     return new Promise(resolve => {
       foundry.applications.api.DialogV2.prompt({
         window: { title },
-        content: `<div class="form-group"><label>${label}</label><input type="text" name="name" autofocus /></div>`,
+        content: `
+          <div class="standard-form">
+            <div class="form-group">
+              <label>${label}</label>
+              <div class="form-fields">
+                <input type="text" name="name" autofocus placeholder="${label}…" />
+              </div>
+            </div>
+          </div>`,
         ok: {
           label: "Create",
           callback: (_event, button) => resolve(button.form.elements.name.value.trim() || null)

@@ -404,7 +404,7 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
     return new Promise(resolve => {
       foundry.applications.api.DialogV2.prompt({
         window: { title },
-        content: `<div class="form-group"><label>${label}</label><input type="text" name="name" autofocus /></div>`,
+        content: `<div class="standard-form"><div class="form-group"><label>${label}</label><div class="form-fields"><input type="text" name="name" autofocus placeholder="${label}…" /></div></div></div>`,
         ok: {
           label: "Create",
           callback: (_event, button) => {
@@ -434,7 +434,7 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
 
   static async #onCreateProject(_event, _target) {
     if (!this.#selectedFactionId) return;
-    const name = await FactionDetailApp.#promptName("New Project", "Enter project name:");
+    const name = await FactionDetailApp.#promptName("New Project", "Name");
     if (!name) return;
     const project = await ProjectStore.create(this.#selectedFactionId, name);
     this.#selectedProjectId = project.id;
@@ -623,14 +623,25 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
     if (!this.#selectedFactionId) return;
 
     const fromFactionId = this.#selectedFactionId;
-    const appRect = this.element.getBoundingClientRect();
-    const btnRect = target.getBoundingClientRect();
+    const appRect  = this.element.getBoundingClientRect();
+    const btnRect  = target.getBoundingClientRect();
 
     const panel = document.createElement("div");
     panel.className = "mm-search-panel ddf-conn-panel";
-    // Align panel's right edge with the button's right edge, below the button
-    panel.style.right = `${appRect.right - btnRect.right}px`;
-    panel.style.top   = `${btnRect.bottom - appRect.top + 4}px`;
+
+    // Hang the panel to the right of the faction window.
+    // Fall back to left side if the window is too close to the screen edge.
+    const PANEL_W = 260;
+    const GAP     = 8;
+    const fitsRight = appRect.right + GAP + PANEL_W <= window.innerWidth;
+    if (fitsRight) {
+      panel.style.left = `${appRect.right + GAP}px`;
+    } else {
+      panel.style.right = `${window.innerWidth - appRect.left + GAP}px`;
+    }
+    // Vertically align with the button that opened it
+    const topMax = window.innerHeight - 40; // keep at least some of the panel visible
+    panel.style.top = `${Math.min(btnRect.top, topMax)}px`;
 
     panel.innerHTML = `
       <div class="mm-panel-title">Add Connection</div>
@@ -651,7 +662,8 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
     panel.querySelector('[data-mode="document"]').addEventListener("click",  () => this.#showConnDocumentSearch(panel, fromFactionId));
     panel.querySelector('[data-mode="simple"]').addEventListener("click",    () => this.#showConnSimpleInput(panel, fromFactionId));
 
-    this.element.appendChild(panel);
+    // Attach to body so it can appear outside the faction window bounds
+    document.body.appendChild(panel);
     this.#bindConnPanelDismiss(panel);
   }
 
@@ -673,9 +685,13 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
     panel.innerHTML = `
       <div class="mm-panel-title">Link Faction</div>
       <input type="text" class="mm-search-input" placeholder="Filter factions…" autofocus />
-      <div class="mm-search-results">
+      <div class="mm-search-results ddf-conn-faction-list">
         ${candidates.length
-          ? candidates.map(f => `<div class="mm-search-result" data-id="${f.id}">${foundry.utils.escapeHTML(f.name)}</div>`).join("")
+          ? candidates.map(f => `
+              <div class="mm-search-result" data-id="${f.id}">
+                <i class="fa-solid fa-link ddf-link-icon"></i>
+                <span>${foundry.utils.escapeHTML(f.name)}</span>
+              </div>`).join("")
           : "<div class='mm-search-empty'>No factions available</div>"
         }
       </div>
@@ -836,7 +852,7 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
   }
 
   #closeConnPanel() {
-    this.element?.querySelectorAll(".ddf-conn-panel").forEach(el => el.remove());
+    document.querySelectorAll(".ddf-conn-panel").forEach(el => el.remove());
   }
 
   #bindConnPanelDismiss(panel) {
