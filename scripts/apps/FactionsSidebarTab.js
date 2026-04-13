@@ -243,6 +243,21 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
       });
     });
 
+    // ── Create faction inside folder ──────────────────────────────────────────
+    el.querySelectorAll("[data-action='createFactionInFolder']").forEach(btn => {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const folderId = btn.closest(".ddf-folder-section[data-folder-id]")?.dataset.folderId;
+        if (!folderId) return;
+        const folderName = FolderStore.getFolders()[folderId]?.name ?? "folder";
+        const name = await this.#promptName(`New Faction in ${folderName}`, "Name");
+        if (!name) return;
+        const faction = await FactionStore.create(name, null);
+        await FolderStore.setFactionFolder(faction.id, folderId);
+        this.render();
+      });
+    });
+
     // ── Folder rename/edit ────────────────────────────────────────────────────
     el.querySelectorAll("[data-action='renameFolder']").forEach(btn => {
       btn.addEventListener("click", (e) => {
