@@ -72,6 +72,24 @@ Hooks.once("init", async () => {
     ])
   });
 
+  game.settings.register(MODULE_ID, "relationshipMapBg", {
+    name: "Relationship Map: Background Image",
+    hint: "Image displayed behind the Faction Relationship Map. Leave blank to use the color setting instead.",
+    scope: "world",
+    config: true,
+    type: String,
+    default: ""
+  });
+
+  game.settings.register(MODULE_ID, "relationshipMapBgColor", {
+    name: "Relationship Map: Background Color",
+    hint: "Background color used when no image is set.",
+    scope: "world",
+    config: true,
+    type: String,
+    default: "#1a1c2e"
+  });
+
   game.settings.register(MODULE_ID, "connectionTypes", {
     name: "Connection Types",
     hint: "Types available when creating faction relationships. Each type has a name and a default color.",
@@ -385,4 +403,80 @@ Hooks.on("renderSettingsConfig", (_app, html) => {
   ctWrap.appendChild(addCtBtn);
 
   ctInput.replaceWith(ctWrap);
+
+  // ── Relationship Map Background Image: swap text input for file picker ────
+  const bgImgInput = root.querySelector(
+    `input[name="${MODULE_ID}.relationshipMapBg"]:not([type="hidden"])`
+  );
+  if (bgImgInput) {
+    const currentPath = game.settings.get(MODULE_ID, "relationshipMapBg") ?? "";
+
+    const bgWrap = document.createElement("div");
+    bgWrap.className = "ddf-file-picker-wrap";
+
+    const pathInput       = document.createElement("input");
+    pathInput.type        = "text";
+    pathInput.name        = `${MODULE_ID}.relationshipMapBg`;
+    pathInput.value       = currentPath;
+    pathInput.placeholder = "path/to/image.webp";
+    pathInput.className   = "ddf-bg-path-input";
+
+    const browseBtn     = document.createElement("button");
+    browseBtn.type      = "button";
+    browseBtn.className = "ddf-bg-browse-btn";
+    browseBtn.title     = "Browse for image";
+    browseBtn.innerHTML = '<i class="fa-solid fa-file-image"></i>';
+    browseBtn.addEventListener("click", () => {
+      new FilePicker({
+        type:     "image",
+        current:  pathInput.value || "",
+        callback: (path) => { pathInput.value = path; }
+      }).browse();
+    });
+
+    const clearBtn     = document.createElement("button");
+    clearBtn.type      = "button";
+    clearBtn.className = "ddf-bg-clear-btn icon";
+    clearBtn.title     = "Clear image";
+    clearBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+    clearBtn.addEventListener("click", () => { pathInput.value = ""; });
+
+    bgWrap.appendChild(pathInput);
+    bgWrap.appendChild(browseBtn);
+    bgWrap.appendChild(clearBtn);
+    bgImgInput.replaceWith(bgWrap);
+  }
+
+  // ── Relationship Map Background Color: swap text input for color picker ───
+  const bgColorInput = root.querySelector(
+    `input[name="${MODULE_ID}.relationshipMapBgColor"]:not([type="hidden"])`
+  );
+  if (bgColorInput) {
+    const currentColor = game.settings.get(MODULE_ID, "relationshipMapBgColor") ?? "#1a1c2e";
+
+    const colorWrap = document.createElement("div");
+    colorWrap.className = "ddf-color-picker-wrap";
+
+    const colorSwatch       = document.createElement("input");
+    colorSwatch.type        = "color";
+    colorSwatch.value       = currentColor;
+    colorSwatch.className   = "ddf-color-swatch";
+
+    const colorText         = document.createElement("input");
+    colorText.type          = "text";
+    colorText.name          = `${MODULE_ID}.relationshipMapBgColor`;
+    colorText.value         = currentColor;
+    colorText.placeholder   = "#1a1c2e";
+    colorText.className     = "ddf-color-text-input";
+    colorText.maxLength     = 7;
+
+    colorSwatch.addEventListener("input", () => { colorText.value = colorSwatch.value; });
+    colorText.addEventListener("input",   () => {
+      if (/^#[0-9a-fA-F]{6}$/.test(colorText.value)) colorSwatch.value = colorText.value;
+    });
+
+    colorWrap.appendChild(colorSwatch);
+    colorWrap.appendChild(colorText);
+    bgColorInput.replaceWith(colorWrap);
+  }
 });

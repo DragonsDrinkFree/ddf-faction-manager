@@ -146,7 +146,10 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
     this.#teardownMindMap();
 
     const wrap = this.element.querySelector(".relationship-canvas-wrap");
-    if (wrap) this.#mountMindMap(wrap);
+    if (wrap) {
+      this.#applyCanvasBackground(wrap);
+      this.#mountMindMap(wrap);
+    }
 
     // ── Collapse/expand sub-factions ──────────────────────────────────────────
     this.element.querySelectorAll(".global-rel-collapse-btn").forEach(btn => {
@@ -267,6 +270,20 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
       this.#savedTransform = this.#mindMap.getTransform();
       this.#mindMap.destroy();
       this.#mindMap = null;
+    }
+  }
+
+  #applyCanvasBackground(wrap) {
+    const bgImage = game.settings.get("ddf-faction-manager", "relationshipMapBg")      ?? "";
+    const bgColor = game.settings.get("ddf-faction-manager", "relationshipMapBgColor") ?? "";
+    if (bgImage) {
+      wrap.style.backgroundImage    = `url("${bgImage}")`;
+      wrap.style.backgroundSize     = "cover";
+      wrap.style.backgroundPosition = "center";
+      wrap.style.backgroundColor    = "";
+    } else {
+      wrap.style.backgroundImage = "";
+      wrap.style.backgroundColor = bgColor || "";
     }
   }
 
