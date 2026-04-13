@@ -5,14 +5,22 @@ import { RelationshipStore } from "../data/RelationshipStore.js";
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
 export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) {
-  /** @type {FactionDetailApp|null} */
-  static #instance = null;
+  /** @type {Map<string, FactionDetailApp>} factionId → open instance */
+  static #instances = new Map();
 
   #selectedFactionId = null;
   #selectedProjectId = null;
   #activeTab = "overview";
   #editingOverview = false;
   #editingNoteId = null;
+
+  /**
+   * @param {string} factionId
+   */
+  constructor(factionId) {
+    super({ id: `ddf-faction-detail-${factionId}` });
+    this.#selectedFactionId = factionId;
+  }
 
   static DEFAULT_OPTIONS = {
     id: "ddf-faction-detail",
@@ -43,7 +51,8 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
       deleteNote:        FactionDetailApp.#onDeleteNote,
       breakParentLink:   FactionDetailApp.#onBreakParentLink,
       deleteConnection:  FactionDetailApp.#onDeleteConnection,
-      addConnection:     FactionDetailApp.#onAddConnection
+      addConnection:     FactionDetailApp.#onAddConnection,
+      openConnection:    FactionDetailApp.#onOpenConnection
     }
   };
 
@@ -64,22 +73,22 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
   }
 
   /**
-   * Open (or switch) the singleton detail window to the given faction.
+   * Open a detail window for the given faction.
+   * If a window for that faction is already open, bring it to front.
    * @param {string} factionId
    */
   static show(factionId) {
     if (!game.user.isGM) return;
-    if (!FactionDetailApp.#instance) {
-      FactionDetailApp.#instance = new FactionDetailApp();
+
+    // Reuse an already-open window for this faction
+    const existing = FactionDetailApp.#instances.get(factionId);
+    if (existing?.element?.isConnected) {
+      existing.render({ force: true });
+      return;
     }
-    const app = FactionDetailApp.#instance;
-    if (app.#selectedFactionId !== factionId) {
-      app.#selectedFactionId = factionId;
-      app.#selectedProjectId = null;
-      app.#editingOverview = false;
-      app.#editingNoteId = null;
-      app.#activeTab = "overview";
-    }
+
+    const app = new FactionDetailApp(factionId);
+    FactionDetailApp.#instances.set(factionId, app);
     app.render({ force: true });
   }
 
@@ -91,7 +100,7 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
     context.activeTab = this.#activeTab;
     context.tabs = [
       { id: "overview", label: "Overview", icon: "fa-solid fa-scroll",     cssClass: this.#activeTab === "overview" ? "active" : "" },
-      { id: "projects", label: "Projects", icon: "fa-solid fa-list-check", cssClass: this.#activeTab === "projects" ? "active" : "" }
+      { id: "projects", label: "Objectives", icon: "fa-solid fa-list-check", cssClass: this.#activeTab === "projects" ? "active" : "" }
     ];
     return context;
   }
@@ -171,14 +180,15 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
     const parentItems = [];
     if (faction?.parentId && allFactions[faction.parentId]) {
       parentItems.push({
-        id:             `parent_${faction.parentId}`,
-        name:           allFactions[faction.parentId].name,
-        icon:           "",
+        id:              `parent_${faction.parentId}`,
+        name:            allFactions[faction.parentId].name,
+        icon:            "",
         directionSymbol: "↑",
-        isAuto:         true,
-        isParentLink:   true,
+        isAuto:          true,
+        isParentLink:    true,
         parentFactionId: faction.parentId,
-        color:          ""
+        targetFactionId: faction.parentId,
+        color:           ""
       });
     }
 
@@ -192,6 +202,7 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
         icon:            "",
         directionSymbol: "↕",
         isAuto:          true,
+        targetFactionId: f.id,
         color:           ""
       }));
 
@@ -200,16 +211,20 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
 
     const storedItems = storedEdges
       .map(edge => {
-        let name = "";
-        let icon = "fa-solid fa-circle-nodes";
+        let name            = "";
+        let icon            = "fa-solid fa-circle-nodes";
+        let targetFactionId = null;
+        let documentUuid    = null;
 
         if (edge.type === "faction") {
-          const targetId = edge._reversed ? edge.fromFactionId : edge.toFactionId;
-          name = allFactions[targetId]?.name ?? "Unknown Faction";
-          icon = "";
+          const targetId  = edge._reversed ? edge.fromFactionId : edge.toFactionId;
+          name            = allFactions[targetId]?.name ?? "Unknown Faction";
+          icon            = "";
+          targetFactionId = targetId;
         } else if (edge.type === "document") {
-          name = edge.documentName ?? "Document";
-          icon = ICON[edge.documentType] ?? "fa-solid fa-file";
+          name         = edge.documentName ?? "Document";
+          icon         = ICON[edge.documentType] ?? "fa-solid fa-file";
+          documentUuid = edge.documentUuid ?? null;
         } else {
           name = edge.label ?? "Simple Node";
           icon = "fa-solid fa-circle-nodes";
@@ -227,7 +242,9 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
           isReversed:       edge._reversed ?? false,
           isAuto:           false,
           relationLabel:    edge.relationLabel ?? "",
-          connectionTypeId: edge.connectionTypeId ?? null
+          connectionTypeId: edge.connectionTypeId ?? null,
+          targetFactionId,
+          documentUuid
         };
       })
       .sort((a, b) => a.name.localeCompare(b.name));
@@ -434,7 +451,7 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
 
   static async #onCreateProject(_event, _target) {
     if (!this.#selectedFactionId) return;
-    const name = await FactionDetailApp.#promptName("New Project", "Name");
+    const name = await FactionDetailApp.#promptName("New Objective", "Name");
     if (!name) return;
     const project = await ProjectStore.create(this.#selectedFactionId, name);
     this.#selectedProjectId = project.id;
@@ -512,7 +529,7 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
     if (!project) return;
 
     const confirmed = await foundry.applications.api.DialogV2.confirm({
-      window: { title: "Delete Project" },
+      window: { title: "Delete Objective" },
       content: `<p>Delete <strong>${project.name}</strong> and all its notes? This cannot be undone.</p>`
     });
     if (!confirmed) return;
@@ -548,6 +565,17 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
 
     await ProjectStore.deleteNote(this.#selectedProjectId, noteId);
     this.render({ parts: ["content"] });
+  }
+
+  static async #onOpenConnection(_event, target) {
+    const factionId = target.dataset.targetFactionId;
+    const uuid      = target.dataset.documentUuid;
+    if (factionId) {
+      FactionDetailApp.show(factionId);
+    } else if (uuid) {
+      const doc = await fromUuid(uuid);
+      doc?.sheet?.render({ force: true });
+    }
   }
 
   static async #onDeleteConnection(_event, target) {
@@ -652,15 +680,11 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
         <button class="mm-option" data-mode="document">
           <i class="fa-solid fa-file"></i> Document
         </button>
-        <button class="mm-option" data-mode="simple">
-          <i class="fa-solid fa-circle-nodes"></i> Simple Node
-        </button>
       </div>
     `;
 
     panel.querySelector('[data-mode="faction"]').addEventListener("click",   () => this.#showConnFactionSearch(panel, fromFactionId));
     panel.querySelector('[data-mode="document"]').addEventListener("click",  () => this.#showConnDocumentSearch(panel, fromFactionId));
-    panel.querySelector('[data-mode="simple"]').addEventListener("click",    () => this.#showConnSimpleInput(panel, fromFactionId));
 
     // Attach to body so it can appear outside the faction window bounds
     document.body.appendChild(panel);
@@ -782,41 +806,6 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
 
     panel.querySelector(".mm-btn-cancel").addEventListener("click", () => this.#closeConnPanel());
     input.focus();
-  }
-
-  #showConnSimpleInput(panel, fromFactionId) {
-    panel.innerHTML = `
-      <div class="mm-panel-title">Simple Node</div>
-      <input type="text" class="mm-search-input" placeholder="Node label…" autofocus maxlength="40" />
-      ${this.#connTypePickerHTML()}
-      ${this.#connDirectionPickerHTML()}
-      <div class="mm-panel-actions">
-        <button class="mm-btn-confirm">Add</button>
-        <button class="mm-btn-cancel">Cancel</button>
-      </div>
-    `;
-
-    const input = panel.querySelector(".mm-search-input");
-    input.focus();
-
-    const confirm = async () => {
-      const label = input.value.trim();
-      if (!label) return;
-      const direction        = this.#connSelectedDirection(panel);
-      const connectionTypeId = this.#connSelectedType(panel);
-      const opts             = { label };
-      if (connectionTypeId) opts.connectionTypeId = connectionTypeId;
-      await RelationshipStore.createEdge(fromFactionId, "simple", direction, opts);
-      this.#closeConnPanel();
-      this.render({ parts: ["content"] });
-    };
-
-    input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter")  confirm();
-      if (e.key === "Escape") this.#closeConnPanel();
-    });
-    panel.querySelector(".mm-btn-confirm").addEventListener("click", confirm);
-    panel.querySelector(".mm-btn-cancel").addEventListener("click", () => this.#closeConnPanel());
   }
 
   #connTypePickerHTML() {

@@ -11,7 +11,7 @@ const SETTING_KEY = "relationships";
  *       id: string,
  *       fromFactionId: string,
  *       direction: "one-way" | "two-way",
- *       type: "faction" | "document" | "simple",
+ *       type: "faction" | "document",
  *       toFactionId?: string,
  *       documentUuid?: string,
  *       documentType?: string,
@@ -75,7 +75,7 @@ export class RelationshipStore {
   /**
    * Creates a new relationship edge.
    * @param {string} fromFactionId
-   * @param {"faction"|"document"|"simple"} type
+   * @param {"faction"|"document"} type
    * @param {"one-way"|"two-way"} direction
    * @param {object} opts
    * @param {string} [opts.toFactionId]

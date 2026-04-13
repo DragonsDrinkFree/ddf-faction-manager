@@ -2,12 +2,12 @@
 
   <div class="global-rel-layout">
 
-    {{!-- Left Pane: Faction List (POV Switcher) --}}
+    {{!-- Left Pane: Faction List --}}
     <div class="global-rel-faction-list">
       <div class="global-rel-list-header">
         <span>Factions</span>
         {{#if povFactionId}}
-          <span class="global-rel-pov-hint">POV active</span>
+          <span class="global-rel-pov-hint">Node selected</span>
         {{/if}}
       </div>
       {{#each allFactions}}
@@ -36,9 +36,9 @@
   </div>
 
   <div class="relationship-hint">
-    Click node to set POV &nbsp;&middot;&nbsp;
-    Right-click canvas &mdash; <kbd>@</kbd> Faction &nbsp;<kbd>!</kbd> Document &nbsp;<kbd>#</kbd> Simple node
-    &nbsp;&middot;&nbsp; Drag node to reposition &nbsp;&middot;&nbsp;
+    Click node to select &nbsp;&middot;&nbsp;
+    Right-click canvas to add connection &nbsp;&middot;&nbsp;
+    Drag node to reposition &nbsp;&middot;&nbsp;
     Drag canvas to pan &nbsp;&middot;&nbsp; Scroll to zoom
   </div>
 

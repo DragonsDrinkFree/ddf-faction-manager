@@ -82,7 +82,11 @@
                       <i class="fa-solid fa-link-slash"></i>
                     </button>
                   {{/if}}
-                  <span class="rel-name" title="{{name}}">{{name}}</span>
+                  <span class="rel-name rel-name-link"
+                        data-action="openConnection"
+                        {{#if targetFactionId}}data-target-faction-id="{{targetFactionId}}"{{/if}}
+                        {{#if documentUuid}}data-document-uuid="{{documentUuid}}"{{/if}}
+                        title="{{name}}">{{name}}</span>
                   {{#if isAuto}}
                     <span class="rel-dir">{{directionSymbol}}</span>
                   {{else}}
@@ -113,7 +117,7 @@
       {{/if}}
     </section>
 
-    {{!-- Projects Tab --}}
+    {{!-- Objectives Tab --}}
     <section class="tab projects {{#if (eq activeTab "projects")}}active{{/if}}" data-tab="projects">
       {{#if selectedFaction}}
         <div class="projects-layout">
@@ -121,7 +125,7 @@
           {{!-- Left Pane: Project List --}}
           <div class="project-list">
             <div class="project-list-header">
-              <span>Projects</span>
+              <span>Objectives</span>
               <button type="button" class="icon" data-action="createProject" title="New Project">
                 <i class="fa-solid fa-plus"></i>
               </button>
@@ -286,7 +290,7 @@
             {{else}}
               <div class="faction-no-selection">
                 <i class="fa-solid fa-list-check"></i>
-                <p>Select a project to view details.</p>
+                <p>Select an objective to view details.</p>
               </div>
             {{/if}}
           </div>

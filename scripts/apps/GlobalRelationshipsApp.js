@@ -8,7 +8,7 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
   /** @type {GlobalRelationshipsApp|null} */
   static #instance = null;
 
-  /** Currently selected POV faction ID, or null for "no POV" (neutral view). */
+  /** Currently selected faction ID, or null for neutral/overview mode. */
   #povFactionId = null;
 
   /** Set of parent faction IDs whose sub-factions are collapsed in the left pane. */
@@ -235,10 +235,10 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
     super._onClose(options);
   }
 
-  // ─── POV Management ───────────────────────────────────────────────────────────
+  // ─── Node Selection ───────────────────────────────────────────────────────────
 
   /**
-   * Toggle the POV faction. Clicking the active POV clears it (neutral mode).
+   * Toggle the selected node. Clicking the active selection clears it (neutral mode).
    * @param {string} factionId
    */
   #togglePOV(factionId) {
@@ -336,7 +336,7 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
       hint.style.top  = `${clientY - appRect.top}px`;
       hint.innerHTML = `
         <div class="mm-panel-title">Add Connection</div>
-        <p class="mm-panel-hint-text">Click a faction node or select one in the left pane to set a POV first.</p>
+        <p class="mm-panel-hint-text">Click a faction node or select one in the left pane to select a node first.</p>
         <div class="mm-panel-actions"><button class="mm-btn-cancel">Close</button></div>
       `;
       hint.querySelector(".mm-btn-cancel").addEventListener("click", () => this.#closeFloatingPanels());
@@ -359,13 +359,10 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
       <div class="mm-panel-title">Add Connection</div>
       <div class="mm-panel-options">
         <button class="mm-option" data-mode="faction">
-          <i class="fa-solid fa-shield-halved"></i> @ Faction
+          <i class="fa-solid fa-shield-halved"></i> Faction
         </button>
         <button class="mm-option" data-mode="document">
-          <i class="fa-solid fa-file"></i> ! Document
-        </button>
-        <button class="mm-option" data-mode="simple">
-          <i class="fa-solid fa-circle-nodes"></i> # Simple Node
+          <i class="fa-solid fa-file"></i> Document
         </button>
       </div>
     `;
@@ -375,9 +372,6 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
     });
     panel.querySelector('[data-mode="document"]').addEventListener("click", () => {
       this.#showDocumentSearch(panel, fromFactionId);
-    });
-    panel.querySelector('[data-mode="simple"]').addEventListener("click", () => {
-      this.#showSimpleNodeInput(panel, fromFactionId);
     });
 
     this.element.appendChild(panel);
@@ -397,7 +391,7 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
     const candidates = Object.values(allFactions).filter(f => !connectedIds.has(f.id));
 
     panel.innerHTML = `
-      <div class="mm-panel-title">Link Faction <span class="mm-panel-hint">(@)</span></div>
+      <div class="mm-panel-title">Link Faction</div>
       <input type="text" class="mm-search-input" placeholder="Filter factions…" autofocus />
       <div class="mm-search-results">
         ${candidates.length
@@ -453,7 +447,7 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
     }
 
     panel.innerHTML = `
-      <div class="mm-panel-title">Link Document <span class="mm-panel-hint">(!)</span></div>
+      <div class="mm-panel-title">Link Document</div>
       <input type="text" class="mm-search-input" placeholder="Filter documents…" autofocus />
       <div class="mm-search-results">
         ${docs.length
@@ -501,41 +495,6 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
     input.focus();
   }
 
-  #showSimpleNodeInput(panel, fromFactionId) {
-    panel.innerHTML = `
-      <div class="mm-panel-title">Simple Node <span class="mm-panel-hint">(#)</span></div>
-      <input type="text" class="mm-search-input" placeholder="Node label…" autofocus maxlength="40" />
-      ${this.#typePickerHTML()}
-      ${this.#directionPickerHTML()}
-      <div class="mm-panel-actions">
-        <button class="mm-btn-confirm">Add</button>
-        <button class="mm-btn-cancel">Cancel</button>
-      </div>
-    `;
-
-    const input = panel.querySelector(".mm-search-input");
-    input.focus();
-
-    const confirm = async () => {
-      const label            = input.value.trim();
-      if (!label) return;
-      const direction        = this.#selectedDirection(panel);
-      const connectionTypeId = this.#selectedType(panel);
-      const opts             = { label };
-      if (connectionTypeId) opts.connectionTypeId = connectionTypeId;
-      await RelationshipStore.createEdge(fromFactionId, "simple", direction, opts);
-      this.#closeFloatingPanels();
-      this.#refreshMap();
-    };
-
-    input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter")  confirm();
-      if (e.key === "Escape") this.#closeFloatingPanels();
-    });
-    panel.querySelector(".mm-btn-confirm").addEventListener("click", confirm);
-    panel.querySelector(".mm-btn-cancel").addEventListener("click", () => this.#closeFloatingPanels());
-  }
-
   // ─── Node Context Menu ────────────────────────────────────────────────────────
 
   #showNodeContextMenu(nodeKey, clientX, clientY) {
@@ -550,14 +509,34 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
     menu.style.left = `${x}px`;
     menu.style.top  = `${y}px`;
 
-    // In global mode, nodeKey = factionId — no stored edge to remove from here.
-    // Right-clicking a faction node offers: Set POV / Clear POV
-    const isCurrent = nodeKey === this.#povFactionId;
-    menu.innerHTML = `
+    const isCurrent   = nodeKey === this.#povFactionId;
+    // "Connect to..." offered when a DIFFERENT node is already selected
+    const hasSelected = !!this.#povFactionId && !isCurrent;
+    const selectedName = hasSelected
+      ? (FactionStore.getAll()[this.#povFactionId]?.name ?? "Selected")
+      : null;
+
+    let menuHTML = "";
+    if (hasSelected) {
+      menuHTML += `
+        <button class="mm-node-menu-item" data-action="connect-to-selected">
+          <i class="fa-solid fa-link"></i> Connect to ${foundry.utils.escapeHTML(selectedName)}
+        </button>
+      `;
+    }
+    menuHTML += `
       <button class="mm-node-menu-item" data-action="toggle-pov">
-        <i class="fa-solid fa-crosshairs"></i> ${isCurrent ? "Clear POV" : "Set as POV"}
+        <i class="fa-solid fa-crosshairs"></i> ${isCurrent ? "Deselect Node" : "Select Node"}
       </button>
     `;
+    menu.innerHTML = menuHTML;
+
+    if (hasSelected) {
+      menu.querySelector('[data-action="connect-to-selected"]').addEventListener("click", () => {
+        this.#closeFloatingPanels();
+        this.#showDirectConnectionPanel(this.#povFactionId, nodeKey, clientX, clientY);
+      });
+    }
 
     menu.querySelector('[data-action="toggle-pov"]').addEventListener("click", () => {
       this.#closeFloatingPanels();
@@ -566,6 +545,51 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
 
     this.element.appendChild(menu);
     this.#bindPanelDismiss(menu);
+  }
+
+  /**
+   * Show a type+direction picker to create a direct faction→faction connection.
+   * Used when right-clicking a node while another node is selected.
+   */
+  #showDirectConnectionPanel(fromFactionId, toFactionId, clientX, clientY) {
+    const allFactions = FactionStore.getAll();
+    const fromName    = allFactions[fromFactionId]?.name ?? "Selected";
+    const toName      = allFactions[toFactionId]?.name   ?? "Target";
+
+    const appRect = this.element.getBoundingClientRect();
+    const panel   = document.createElement("div");
+    panel.className  = "mm-search-panel";
+    panel.style.left = `${clientX - appRect.left}px`;
+    panel.style.top  = `${clientY - appRect.top}px`;
+
+    panel.innerHTML = `
+      <div class="mm-panel-title">Connect Factions</div>
+      <p class="mm-panel-hint-text">
+        <strong>${foundry.utils.escapeHTML(fromName)}</strong>
+        &rarr;
+        <strong>${foundry.utils.escapeHTML(toName)}</strong>
+      </p>
+      ${this.#typePickerHTML()}
+      ${this.#directionPickerHTML()}
+      <div class="mm-panel-actions">
+        <button class="mm-btn-confirm">Create</button>
+        <button class="mm-btn-cancel">Cancel</button>
+      </div>
+    `;
+
+    panel.querySelector(".mm-btn-confirm").addEventListener("click", async () => {
+      const direction        = this.#selectedDirection(panel);
+      const connectionTypeId = this.#selectedType(panel);
+      const opts             = { toFactionId };
+      if (connectionTypeId) opts.connectionTypeId = connectionTypeId;
+      await RelationshipStore.createEdge(fromFactionId, "faction", direction, opts);
+      this.#closeFloatingPanels();
+      this.#refreshMap();
+    });
+
+    panel.querySelector(".mm-btn-cancel").addEventListener("click", () => this.#closeFloatingPanels());
+    this.element.appendChild(panel);
+    this.#bindPanelDismiss(panel);
   }
 
   // ─── Map Refresh ─────────────────────────────────────────────────────────────

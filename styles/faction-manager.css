@@ -1449,6 +1449,15 @@
   min-width: 0;
 }
 
+.ddf-faction-detail .rel-name-link {
+  cursor: pointer;
+}
+
+.ddf-faction-detail .rel-name-link:hover {
+  color: var(--color-text-hyperlink, #4f83cc);
+  text-decoration: underline;
+}
+
 .ddf-faction-detail .rel-dir {
   flex-shrink: 0;
   font-size: 0.8rem;

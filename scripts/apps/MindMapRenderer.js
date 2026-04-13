@@ -24,14 +24,14 @@ const MAX_SCALE = 5;
  * Config shape:
  *   mode:              "local" | "global"  (default "local")
  *   factionId:         string              (local mode only)
- *   povFactionId:      string | null       (global mode — null = no POV)
+ *   povFactionId:      string | null       (global mode — null = no selection)
  *   allFactions:       getter → object
  *   edges:             getter → array (local) or object map (global)
  *   positions:         getter → object
  *   onPositionSave:    (nodeKey, x, y) => void
  *   onContextMenu:     (svgX, svgY, clientX, clientY) => void
  *   onNodeContextMenu: (nodeKey, edge|null, clientX, clientY) => void
- *   onSetPOV:          (factionId) => void  (global mode only)
+ *   onSetPOV:          (factionId) => void  (global mode — toggles selected node)
  */
 export class MindMapRenderer {
   #container;
