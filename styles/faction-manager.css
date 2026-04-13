@@ -2274,6 +2274,60 @@
   pointer-events: none;
 }
 
+/* Member orbit ring — inner ring, lighter than sub-faction ring */
+.mm-member-ring {
+  fill: none;
+  stroke: var(--color-border-primary, #888888);
+  stroke-width: 1;
+  stroke-dasharray: 4 6;
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+/* Member spoke lines */
+.mm-member-spoke {
+  stroke: var(--color-border-primary, #888888);
+  stroke-width: 0.75;
+  stroke-dasharray: 2 4;
+  opacity: 0.25;
+  pointer-events: none;
+}
+
+/* Linked-actor member node (diamond, blue tint) */
+.mm-node-type-member-actor .mm-shape {
+  fill: color-mix(in srgb, #5b8dd9 45%, var(--color-bg-option));
+  stroke: #5b8dd9;
+  stroke-width: 1.5;
+}
+
+/* Unlinked member node (diamond, muted) */
+.mm-node-type-member-other .mm-shape {
+  fill: color-mix(in srgb, var(--color-bg-option) 60%, #777);
+  stroke: var(--color-border-primary);
+  stroke-width: 1.25;
+}
+
+/* Member node labels — small font, centered inside diamond */
+.mm-node-type-member-actor .mm-node-label,
+.mm-node-type-member-other .mm-node-label {
+  font-size: 9px;
+  opacity: 0.9;
+}
+
+/* Document Actor node on global map (diamond) */
+.mm-node-type-doc-actor .mm-shape {
+  fill: color-mix(in srgb, #e67e22 35%, var(--color-bg-option));
+  stroke: #e67e22;
+  stroke-width: 1.5;
+}
+
+/* Other document node on global map (square) */
+.mm-node-type-doc-other .mm-shape {
+  fill: color-mix(in srgb, #8e44ad 35%, var(--color-bg-option));
+  stroke: #8e44ad;
+  stroke-width: 1.5;
+}
+
 /* ═══════════════════════════════════════════════════════════════════
    INLINE SETTINGS CONTROLS  (.ddf-inline-stat-editor)
    Injected into Foundry's native Game Settings panel via hook.
@@ -2977,4 +3031,55 @@
   font-style: italic;
   margin-left: auto;
   flex-shrink: 0;
+}
+
+/* ─── Sub-faction Member Sections ─────────────────────────────────────────── */
+
+.ddf-faction-detail .member-subfaction-divider {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 8px 4px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-dark-secondary, #666);
+}
+
+.ddf-faction-detail .member-subfaction-divider::before,
+.ddf-faction-detail .member-subfaction-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: color-mix(in srgb, var(--color-border-light-primary) 50%, transparent);
+}
+
+.ddf-faction-detail .member-subfaction-header .member-rank-name {
+  color: var(--color-text-light-primary);
+  font-style: italic;
+}
+
+/* Member detail — faction badge */
+.ddf-faction-detail .member-faction-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.8rem;
+  font-style: italic;
+  color: var(--color-text-light-primary);
+}
+
+/* Member detail footer — move + delete side by side */
+.ddf-faction-detail .member-detail-footer {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ddf-faction-detail .ddf-member-move-btn {
+  font-size: 0.8rem;
+  padding: 4px 10px;
+  border-radius: 3px;
+  cursor: pointer;
 }

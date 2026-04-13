@@ -6,13 +6,17 @@ const R = {
   subfaction: 28,
   faction:    24,
   pov:        34,
-  factionGlobal: 26,
+  factionGlobal: 36,
   document: { rx: 32, ry: 20 },
-  simple:   { rx: 30, ry: 18 }
+  simple:   { rx: 30, ry: 18 },
+  memberNode: 26,  // member orbit nodes
+  docGlobal:  30   // document nodes on the global map
 };
-const INNER_RING  = 145;
-const OUTER_RING  = 280;
-const ORBIT_GAP   = 20;  // minimum gap between parent edge and sub-faction edge
+const INNER_RING       = 145;
+const OUTER_RING       = 280;
+const ORBIT_GAP        = 20;  // minimum gap between parent edge and sub-faction edge
+const MEMBER_NODE_R    = 26;  // radius of member orbit nodes
+const MEMBER_ORBIT_GAP = 15;  // gap between faction node edge and member ring
 
 /** Zoom limits */
 const MIN_SCALE = 0.15;
@@ -31,6 +35,7 @@ const MAX_SCALE = 5;
  *   onPositionSave:    (nodeKey, x, y) => void
  *   onContextMenu:     (svgX, svgY, clientX, clientY) => void
  *   onNodeContextMenu: (nodeKey, edge|null, clientX, clientY) => void
+ *   members:           getter → object (global mode — all members keyed by id)
  *   onSetPOV:          (factionId) => void  (global mode — toggles selected node)
  */
 export class MindMapRenderer {
@@ -103,12 +108,14 @@ export class MindMapRenderer {
     this.#viewport = null;
     this.#drag     = null;
     this.#pan      = null;
-    this._globalEdgeEls  = null;
-    this._globalNodeEls  = null;
-    this._globalNodeMap  = null;
-    this._orbitRingEls   = null;
-    this._spokeLinkEls   = null;
-    this._orbitRadii     = null;
+    this._globalEdgeEls      = null;
+    this._globalNodeEls      = null;
+    this._globalNodeMap      = null;
+    this._orbitRingEls       = null;
+    this._spokeLinkEls       = null;
+    this._orbitRadii         = null;
+    this._memberOrbitRingEls = null;
+    this._memberSpokeEls     = null;
   }
 
   remount() {
@@ -334,6 +341,38 @@ export class MindMapRenderer {
       };
     }
 
+    // Render member orbit rings + spokes for every faction that has members.
+    this._memberOrbitRingEls = {};
+    this._memberSpokeEls     = {};
+    const membersByFactionNode = {};
+    for (const node of nodes) {
+      if (!node.isMember) continue;
+      (membersByFactionNode[node.parentId] ??= []).push(node);
+    }
+    for (const [parentId, mNodes] of Object.entries(membersByFactionNode)) {
+      const parentNode = nodeMap[parentId];
+      if (!parentNode) continue;
+      const avgR = mNodes.reduce((sum, n) =>
+        sum + Math.sqrt((n.x - parentNode.x) ** 2 + (n.y - parentNode.y) ** 2)
+      , 0) / Math.max(mNodes.length, 1);
+
+      const mRing = this.#el("circle", {
+        cx: parentNode.x, cy: parentNode.y, r: avgR,
+        class: "mm-member-ring"
+      });
+      orbitGroup.appendChild(mRing);
+      this._memberOrbitRingEls[parentId] = mRing;
+
+      for (const mNode of mNodes) {
+        const { x1, y1, x2, y2 } = this.#edgeEndpoints(parentNode, mNode);
+        const spoke = this.#el("line", { x1, y1, x2, y2, class: "mm-member-spoke" });
+        spokeGroup.appendChild(spoke);
+        this._memberSpokeEls[`${parentId}|${mNode.key}`] = {
+          line: spoke, parentKey: parentId, memberKey: mNode.key
+        };
+      }
+    }
+
     // Render edges (behind nodes)
     const edgeEls = {}; // key = "fromKey|toKey"
     for (const desc of edgeDescs) {
@@ -353,15 +392,18 @@ export class MindMapRenderer {
       nodeEls[node.key] = { el: g, node };
     }
 
-    // Wire drag + left-click (POV toggle) + right-click on each node
+    // Wire drag + left-click (POV toggle) + right-click on each node.
+    // Member and document nodes get drag only — no POV toggle or context menu.
     for (const { el, node } of Object.values(nodeEls)) {
       this.#wireNodeDrag(el, node, null, null, true);
 
-      el.addEventListener("contextmenu", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        this.#config.onNodeContextMenu(node.key, null, e.clientX, e.clientY);
-      });
+      if (!node.isMember && !node.isDocument) {
+        el.addEventListener("contextmenu", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          this.#config.onNodeContextMenu(node.key, null, e.clientX, e.clientY);
+        });
+      }
     }
 
     // Store element maps for live drag updates
@@ -453,6 +495,99 @@ export class MindMapRenderer {
         }
       }
       remaining = nextRound;
+    }
+
+    // ── Pass 3: document nodes (only those that have at least one stored edge) ─
+    const edgesMap = this.#config.edges;
+    const docMap   = new Map(); // uuid → { name, docType, factionIds[] }
+    for (const edge of Object.values(edgesMap)) {
+      if (edge.type !== "document" || !edge.documentUuid) continue;
+      const uuid = edge.documentUuid;
+      if (!docMap.has(uuid)) {
+        docMap.set(uuid, {
+          name:      edge.documentName  ?? "Document",
+          docType:   edge.documentType  ?? "Other",
+          factionIds: []
+        });
+      }
+      docMap.get(uuid).factionIds.push(edge.fromFactionId);
+    }
+
+    docMap.forEach(({ name, docType, factionIds }, uuid) => {
+      const key = `doc_${uuid}`;
+      let pos = saved[key];
+      if (!pos) {
+        const knownPos = factionIds.map(id => posMap[id]).filter(Boolean);
+        if (knownPos.length) {
+          const avgX = knownPos.reduce((s, p) => s + p.x, 0) / knownPos.length;
+          const avgY = knownPos.reduce((s, p) => s + p.y, 0) / knownPos.length;
+          pos = { x: avgX + 90, y: avgY + 90 };
+        } else {
+          pos = { x: cx + 90, y: cy + 90 };
+        }
+      }
+      posMap[key] = pos;
+      nodes.push({
+        key,
+        label:        name,
+        type:         docType === "Actor" ? "doc-actor" : "doc-other",
+        x: pos.x, y: pos.y,
+        edge: null, edgeStyle: null,
+        resolvedColor: null,
+        radius:       R.docGlobal,
+        isSubFaction: false,
+        isMember:     false,
+        isDocument:   true,
+        documentType: docType
+      });
+    });
+
+    // ── Pass 4: member nodes orbit their faction (inner ring) ─────────────────
+    const allMembersData   = this.#config.members ?? {};
+    const membersByFaction = {};
+    for (const member of Object.values(allMembersData)) {
+      if (!member.factionId) continue;
+      (membersByFaction[member.factionId] ??= []).push(member);
+    }
+
+    for (const [factionId, members] of Object.entries(membersByFaction)) {
+      const parentPos = posMap[factionId];
+      if (!parentPos) continue; // faction not on map
+      const faction   = allFactions[factionId];
+      const factionR  = faction ? this.#computeNodeRadius(faction) : R.factionGlobal;
+
+      // Use saved distance of any sibling; otherwise compute inner orbit radius
+      let orbitR = factionR + MEMBER_ORBIT_GAP + MEMBER_NODE_R;
+      for (const m of members) {
+        const sp = saved[`member_${m.id}`];
+        if (sp) {
+          orbitR = Math.sqrt((sp.x - parentPos.x) ** 2 + (sp.y - parentPos.y) ** 2);
+          break;
+        }
+      }
+
+      members.forEach((member, i) => {
+        const key   = `member_${member.id}`;
+        const angle = (2 * Math.PI * i / Math.max(members.length, 1)) - Math.PI / 2;
+        const pos   = saved[key] ?? {
+          x: parentPos.x + orbitR * Math.cos(angle),
+          y: parentPos.y + orbitR * Math.sin(angle)
+        };
+        posMap[key] = pos;
+        nodes.push({
+          key,
+          label:        member.name ?? "Member",
+          type:         member.actorUuid ? "member-actor" : "member-other",
+          x: pos.x, y: pos.y,
+          edge: null, edgeStyle: null,
+          resolvedColor: null,
+          radius:       MEMBER_NODE_R,
+          isSubFaction: false,
+          isMember:     true,
+          isDocument:   false,
+          parentId:     factionId
+        });
+      });
     }
 
     return nodes;
@@ -564,7 +699,7 @@ export class MindMapRenderer {
     const connectionTypes = this.#config.connectionTypes ?? [];
     const descs = [];
 
-    // Stored faction-to-faction edges only.
+    // Faction-to-faction edges.
     // Sub-faction hierarchy is shown as orbit rings, not as lines.
     for (const edge of Object.values(edgesMap)) {
       if (edge.type !== "faction") continue;
@@ -574,6 +709,20 @@ export class MindMapRenderer {
       descs.push({
         fromKey: edge.fromFactionId,
         toKey:   edge.toFactionId,
+        style:   edge.direction === "two-way" ? "two-way" : "one-way",
+        color:   edge.color ?? typeColor ?? null
+      });
+    }
+
+    // Document edges — line from faction node to document node.
+    for (const edge of Object.values(edgesMap)) {
+      if (edge.type !== "document" || !edge.documentUuid) continue;
+      const typeColor = edge.connectionTypeId
+        ? connectionTypes.find(t => t.id === edge.connectionTypeId)?.color ?? null
+        : null;
+      descs.push({
+        fromKey: edge.fromFactionId,
+        toKey:   `doc_${edge.documentUuid}`,
         style:   edge.direction === "two-way" ? "two-way" : "one-way",
         color:   edge.color ?? typeColor ?? null
       });
@@ -627,6 +776,30 @@ export class MindMapRenderer {
         width: R.document.rx * 2, height: R.document.ry * 2,
         rx: 6, class: "mm-shape mm-document"
       });
+    } else if (node.type === "doc-actor") {
+      const s = node.radius ?? R.docGlobal;
+      shape = this.#el("polygon", {
+        points: `0,${-s} ${s},0 0,${s} ${-s},0`,
+        class: "mm-shape mm-doc-actor"
+      });
+    } else if (node.type === "doc-other") {
+      const s = node.radius ?? R.docGlobal;
+      shape = this.#el("rect", {
+        x: -s, y: -s, width: s * 2, height: s * 2,
+        rx: 3, class: "mm-shape mm-doc-other"
+      });
+    } else if (node.type === "member-actor") {
+      const s = node.radius ?? MEMBER_NODE_R;
+      shape = this.#el("polygon", {
+        points: `0,${-s} ${s},0 0,${s} ${-s},0`,
+        class: "mm-shape mm-member-actor"
+      });
+    } else if (node.type === "member-other") {
+      const s = node.radius ?? MEMBER_NODE_R;
+      shape = this.#el("polygon", {
+        points: `0,${-s} ${s},0 0,${s} ${-s},0`,
+        class: "mm-shape mm-member-other"
+      });
     } else {
       shape = this.#el("ellipse", { rx: R.simple.rx, ry: R.simple.ry, class: "mm-shape mm-simple" });
     }
@@ -658,9 +831,10 @@ export class MindMapRenderer {
       g.appendChild(icon);
     }
 
-    // Label — word-wrap at ~12 chars
-    const lines      = this.#wrapText(node.label, 12);
-    const lineHeight = 13;
+    // Label — member nodes use tight wrap so text fits inside the diamond
+    const wrapAt     = node.isMember ? 7 : 12;
+    const lines      = this.#wrapText(node.label, wrapAt);
+    const lineHeight = node.isMember ? 11 : 13;
     const totalH     = lines.length * lineHeight;
     const startY     = (node.type === "document" ? 6 : 0) + (-totalH / 2 + lineHeight / 2);
 
@@ -834,11 +1008,14 @@ export class MindMapRenderer {
     const { nodeKey, node, nodeEl, isGlobal, moved } = this.#drag;
     nodeEl.style.cursor = "";
 
-    if (isGlobal && !moved && this.#config.onSetPOV) {
+    if (isGlobal && !moved && this.#config.onSetPOV && !node.isMember && !node.isDocument) {
       this.#config.onSetPOV(nodeKey);
     } else if (isGlobal && node.isSubFaction && moved) {
       // Sub-faction dragged: normalize all siblings to same orbit radius
       this.#normalizeOrbitAfterSubFactionDrag(node);
+    } else if (isGlobal && node.isMember && moved) {
+      // Member dragged: normalize all sibling members to same orbit radius
+      this.#normalizeOrbitAfterMemberDrag(node);
     } else {
       this.#config.onPositionSave(nodeKey, node.x, node.y);
       // Save all descendants (any depth) that moved with the dragged node
@@ -868,7 +1045,7 @@ export class MindMapRenderer {
     // Rearrange every sibling (including the dragged one) to the new radius
     const siblings = Object.values(this._globalNodeEls ?? {})
       .map(({ node: n }) => n)
-      .filter(n => n.parentId === draggedSub.parentId);
+      .filter(n => n.parentId === draggedSub.parentId && n.isSubFaction);
 
     for (const sib of siblings) {
       const oldX  = sib.x;
@@ -893,6 +1070,42 @@ export class MindMapRenderer {
     if (this._orbitRadii) this._orbitRadii[draggedSub.parentId] = newRadius;
     const ring = this._orbitRingEls?.[draggedSub.parentId];
     if (ring) ring.setAttribute("r", newRadius);
+  }
+
+  /**
+   * After a member node is dragged, compute the new orbit radius from its distance
+   * to the parent faction and rearrange all sibling members to that same radius
+   * (preserving each sibling's angle). Updates the member orbit ring too.
+   */
+  #normalizeOrbitAfterMemberDrag(draggedMember) {
+    const parentNode = this._globalNodeMap?.[draggedMember.parentId];
+    if (!parentNode) {
+      this.#config.onPositionSave(draggedMember.key, draggedMember.x, draggedMember.y);
+      return;
+    }
+
+    const newRadius = Math.sqrt(
+      (draggedMember.x - parentNode.x) ** 2 +
+      (draggedMember.y - parentNode.y) ** 2
+    );
+
+    // Rearrange every sibling member to the new radius
+    const siblings = Object.values(this._globalNodeEls ?? {})
+      .map(({ node: n }) => n)
+      .filter(n => n.isMember && n.parentId === draggedMember.parentId);
+
+    for (const sib of siblings) {
+      const angle = Math.atan2(sib.y - parentNode.y, sib.x - parentNode.x);
+      sib.x = parentNode.x + newRadius * Math.cos(angle);
+      sib.y = parentNode.y + newRadius * Math.sin(angle);
+      const sibEl = this._globalNodeEls?.[sib.key]?.el;
+      if (sibEl) sibEl.setAttribute("transform", `translate(${sib.x},${sib.y})`);
+      this.#config.onPositionSave(sib.key, sib.x, sib.y);
+      this.#redrawGlobalEdgesForNode(sib.key);
+    }
+
+    // Update member orbit ring radius
+    if (this._memberOrbitRingEls) this._memberOrbitRingEls[draggedMember.parentId]?.setAttribute("r", newRadius);
   }
 
   /**
@@ -953,11 +1166,30 @@ export class MindMapRenderer {
       }
     }
 
-    // Orbit ring — moves when its parent faction moves
+    // Sub-faction orbit ring — moves when its parent faction moves
     const ring = this._orbitRingEls?.[factionKey];
     if (ring) {
       const pn = nodeMap[factionKey];
       if (pn) { ring.setAttribute("cx", pn.x); ring.setAttribute("cy", pn.y); }
+    }
+
+    // Member orbit ring — moves when its parent faction moves
+    const memberRing = this._memberOrbitRingEls?.[factionKey];
+    if (memberRing) {
+      const pn = nodeMap[factionKey];
+      if (pn) { memberRing.setAttribute("cx", pn.x); memberRing.setAttribute("cy", pn.y); }
+    }
+
+    // Member spoke lines
+    if (this._memberSpokeEls) {
+      for (const { line, parentKey, memberKey } of Object.values(this._memberSpokeEls)) {
+        if (parentKey !== factionKey && memberKey !== factionKey) continue;
+        const pn = nodeMap[parentKey]; const mn = nodeMap[memberKey];
+        if (!pn || !mn) continue;
+        const { x1, y1, x2, y2 } = this.#edgeEndpoints(pn, mn);
+        line.setAttribute("x1", x1); line.setAttribute("y1", y1);
+        line.setAttribute("x2", x2); line.setAttribute("y2", y2);
+      }
     }
   }
 
@@ -1021,6 +1253,8 @@ export class MindMapRenderer {
     if (node.type === "pov")            return R.pov;
     if (node.type === "faction-global") return R.factionGlobal;
     if (node.type === "document")       return Math.max(R.document.rx, R.document.ry);
+    if (node.type === "doc-actor"   || node.type === "doc-other")    return R.docGlobal;
+    if (node.type === "member-actor"|| node.type === "member-other") return MEMBER_NODE_R;
     return Math.max(R.simple.rx, R.simple.ry);
   }
 

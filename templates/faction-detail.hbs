@@ -359,6 +359,30 @@
                 <p>Use <i class="fa-solid fa-layer-group"></i> to add a rank, or <i class="fa-solid fa-user-plus"></i> to add a member.</p>
               </div>
             {{/each}}
+
+            {{!-- Sub-faction member sections --}}
+            {{#if subFactionSections.length}}
+              <div class="member-subfaction-divider">
+                <span>Sub-factions</span>
+              </div>
+              {{#each subFactionSections}}
+                <div class="member-rank-section member-subfaction-section">
+                  <div class="member-rank-header member-subfaction-header">
+                    <i class="fa-solid fa-shield-halved fa-fw member-rank-icon"></i>
+                    <span class="member-rank-name">{{factionName}}</span>
+                  </div>
+                  {{#each members}}
+                    <div class="member-item{{#if (eq id ../selectedMemberId)}} selected{{/if}}"
+                         data-action="selectMember" data-member-id="{{id}}">
+                      <i class="fa-solid fa-user fa-fw member-item-icon"></i>
+                      <span class="member-item-name">{{name}}</span>
+                    </div>
+                  {{else}}
+                    <div class="member-item-empty">No members</div>
+                  {{/each}}
+                </div>
+              {{/each}}
+            {{/if}}
           </div>
 
           {{!-- Right Pane: Member Detail --}}
@@ -375,12 +399,22 @@
 
               <div class="member-detail-body">
 
-                {{!-- Rank dropdown --}}
+                {{!-- Faction badge (shown when member belongs to a sub-faction) --}}
+                {{#if selectedMember.currentFactionName}}
+                  <div class="member-detail-row">
+                    <label class="member-detail-label">Faction</label>
+                    <span class="member-faction-badge">
+                      <i class="fa-solid fa-shield-halved"></i> {{selectedMember.currentFactionName}}
+                    </span>
+                  </div>
+                {{/if}}
+
+                {{!-- Rank dropdown (uses ranks from the member's actual faction) --}}
                 <div class="member-detail-row">
                   <label class="member-detail-label">Rank</label>
                   <select class="member-rank-select">
                     <option value="">— None —</option>
-                    {{#each factionRanks}}
+                    {{#each selectedMember.memberRanks}}
                       <option value="{{id}}" {{#if (eq id ../selectedMember.rankId)}}selected{{/if}}>{{name}}</option>
                     {{/each}}
                   </select>
@@ -406,10 +440,15 @@
                   {{/if}}
                 </div>
 
-                {{!-- Delete --}}
+                {{!-- Footer: Move + Delete --}}
                 <div class="member-detail-footer">
+                  {{#if selectedMember.hasMoveTargets}}
+                    <button type="button" class="ddf-member-move-btn" data-action="moveMember">
+                      <i class="fa-solid fa-right-left"></i> Move to…
+                    </button>
+                  {{/if}}
                   <button type="button" class="ddf-member-delete-btn" data-action="deleteMember">
-                    <i class="fa-solid fa-user-minus"></i> Remove Member
+                    <i class="fa-solid fa-user-minus"></i> Remove
                   </button>
                 </div>
 

@@ -1,5 +1,6 @@
 import { FactionStore } from "../data/FactionStore.js";
 import { RelationshipStore } from "../data/RelationshipStore.js";
+import { MemberStore } from "../data/MemberStore.js";
 import { MindMapRenderer } from "./MindMapRenderer.js";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
@@ -66,6 +67,7 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
 
     Hooks.on("ddf-factions-changed",      this.#onFactionsChanged);
     Hooks.on("ddf-relationships-changed", this.#onRelationshipsChanged);
+    Hooks.on("ddf-members-changed",       this.#onRelationshipsChanged);
   }
 
   static show() {
@@ -228,7 +230,10 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
   _onClose(options) {
     this.#teardownMindMap();
     if (this.#onFactionsChanged)      Hooks.off("ddf-factions-changed",      this.#onFactionsChanged);
-    if (this.#onRelationshipsChanged) Hooks.off("ddf-relationships-changed", this.#onRelationshipsChanged);
+    if (this.#onRelationshipsChanged) {
+      Hooks.off("ddf-relationships-changed", this.#onRelationshipsChanged);
+      Hooks.off("ddf-members-changed",       this.#onRelationshipsChanged);
+    }
     this.#onFactionsChanged      = null;
     this.#onRelationshipsChanged = null;
     GlobalRelationshipsApp.#instance = null;
@@ -276,6 +281,7 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
       get povFactionId()          { return getPOV(); },
       get allFactions()           { return FactionStore.getAll(); },
       get edges()                 { return RelationshipStore.getAll().edges; },
+      get members()               { return MemberStore.getAll().members; },
       get positions()             { return RelationshipStore.getPositions("__global__"); },
       get statDefinitions() {
         try {

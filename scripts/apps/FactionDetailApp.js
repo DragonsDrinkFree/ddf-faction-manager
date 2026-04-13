@@ -63,7 +63,8 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
       deleteMember:      FactionDetailApp.#onDeleteMember,
       openMemberActor:   FactionDetailApp.#onOpenMemberActor,
       unlinkMemberActor: FactionDetailApp.#onUnlinkMemberActor,
-      linkMemberActor:   FactionDetailApp.#onLinkMemberActor
+      linkMemberActor:   FactionDetailApp.#onLinkMemberActor,
+      moveMember:        FactionDetailApp.#onMoveMember
     }
   };
 
@@ -164,10 +165,11 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
 
     // Members tab
     const memberCtx = await this.#buildMembersContext();
-    context.membersByRank    = memberCtx.membersByRank;
-    context.factionRanks     = memberCtx.factionRanks;
-    context.selectedMemberId = this.#selectedMemberId;
-    context.selectedMember   = await this.#buildSelectedMemberContext();
+    context.membersByRank       = memberCtx.membersByRank;
+    context.factionRanks        = memberCtx.factionRanks;
+    context.subFactionSections  = memberCtx.subFactionSections;
+    context.selectedMemberId    = this.#selectedMemberId;
+    context.selectedMember      = await this.#buildSelectedMemberContext();
 
     return context;
   }
@@ -457,12 +459,12 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
   }
 
   async #buildMembersContext() {
-    if (!this.#selectedFactionId) return { membersByRank: [], factionRanks: [] };
+    if (!this.#selectedFactionId) return { membersByRank: [], factionRanks: [], subFactionSections: [] };
 
     const ranks   = MemberStore.getRanksForFaction(this.#selectedFactionId);
     const members = MemberStore.getMembersForFaction(this.#selectedFactionId);
 
-    // Group members by rank
+    // Group direct members by rank
     const byRank  = new Map(ranks.map(r => [r.id, []]));
     const unranked = [];
     for (const member of members) {
@@ -485,7 +487,18 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
       membersByRank.push({ rankId: null, rankName: "Unranked", members: unranked });
     }
 
-    return { membersByRank, factionRanks: ranks };
+    // Sub-faction sections (read-only view of each child faction's members)
+    const allFactions = FactionStore.getAll();
+    const subFactionSections = Object.values(allFactions)
+      .filter(f => f.parentId === this.#selectedFactionId)
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(sf => ({
+        factionId:   sf.id,
+        factionName: sf.name,
+        members:     MemberStore.getMembersForFaction(sf.id)
+      }));
+
+    return { membersByRank, factionRanks: ranks, subFactionSections };
   }
 
   async #buildSelectedMemberContext() {
@@ -502,7 +515,30 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
       } catch { /* uuid stale */ }
     }
 
-    return { ...member, actorName };
+    // Ranks from the member's actual faction (may be a sub-faction with its own ranks)
+    const memberRanks = MemberStore.getRanksForFaction(member.factionId);
+
+    // Factions the member can be moved to: main + sub-factions, excluding current
+    const allFactions   = FactionStore.getAll();
+    const mainFaction   = allFactions[this.#selectedFactionId];
+    const subFactions   = Object.values(allFactions)
+      .filter(f => f.parentId === this.#selectedFactionId)
+      .sort((a, b) => a.name.localeCompare(b.name));
+    const moveTargets = [
+      { id: this.#selectedFactionId, name: mainFaction?.name ?? "Main Faction" },
+      ...subFactions.map(f => ({ id: f.id, name: f.name }))
+    ].filter(t => t.id !== member.factionId);
+
+    const currentFactionName = allFactions[member.factionId]?.name ?? "";
+
+    return {
+      ...member,
+      actorName,
+      memberRanks,
+      moveTargets,
+      hasMoveTargets: moveTargets.length > 0,
+      currentFactionName
+    };
   }
 
   static #promptName(title, label) {
@@ -1192,6 +1228,54 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
   static #onLinkMemberActor(_event, target) {
     if (!this.#selectedMemberId) return;
     this.#showActorSearchPanel(target);
+  }
+
+  static async #onMoveMember(_event, _target) {
+    if (!this.#selectedMemberId) return;
+    const { members } = MemberStore.getAll();
+    const member = members[this.#selectedMemberId];
+    if (!member) return;
+
+    const allFactions = FactionStore.getAll();
+    const subFactions = Object.values(allFactions)
+      .filter(f => f.parentId === this.#selectedFactionId)
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    const targets = [
+      { id: this.#selectedFactionId, name: allFactions[this.#selectedFactionId]?.name ?? "Main Faction" },
+      ...subFactions.map(f => ({ id: f.id, name: f.name }))
+    ].filter(t => t.id !== member.factionId);
+
+    if (!targets.length) return;
+
+    const opts = targets.map(t =>
+      `<option value="${t.id}">${foundry.utils.escapeHTML(t.name)}</option>`
+    ).join("");
+
+    const targetId = await new Promise(resolve => {
+      foundry.applications.api.DialogV2.prompt({
+        window: { title: "Move Member" },
+        content: `
+          <div class="standard-form">
+            <div class="form-group">
+              <label>Move to</label>
+              <div class="form-fields">
+                <select name="target">${opts}</select>
+              </div>
+            </div>
+            <p class="hint">The member's rank will be cleared on move.</p>
+          </div>`,
+        ok: {
+          label: "Move",
+          callback: (_event, button) => resolve(button.form.elements.target.value)
+        },
+        rejectClose: false
+      }).catch(() => resolve(null));
+    });
+
+    if (!targetId) return;
+    await MemberStore.updateMember(this.#selectedMemberId, { factionId: targetId, rankId: null });
+    this.render({ parts: ["content"] });
   }
 
   #showActorSearchPanel(triggerEl) {

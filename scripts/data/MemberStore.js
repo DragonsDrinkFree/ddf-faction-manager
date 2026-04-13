@@ -46,6 +46,7 @@ export class MemberStore {
 
   static async _save(data) {
     await game.settings.set(MODULE_ID, SETTING_KEY, data);
+    Hooks.callAll("ddf-members-changed");
   }
 
   /** Returns all members for a faction, sorted by name. */
