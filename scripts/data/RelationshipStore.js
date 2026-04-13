@@ -63,7 +63,9 @@ export class RelationshipStore {
     for (const edge of Object.values(edges)) {
       if (edge.fromFactionId === factionId) {
         result.push({ ...edge });
-      } else if (edge.direction === "two-way" && edge.toFactionId === factionId) {
+      } else if (edge.type === "faction" && edge.toFactionId === factionId) {
+        // Show all faction edges targeting this faction (one-way AND two-way)
+        // so incoming connections are always visible to the target.
         result.push({ ...edge, _reversed: true });
       }
     }
@@ -130,6 +132,39 @@ export class RelationshipStore {
     const data = this.getAll();
     if (!data.edges[id]) return;
     data.edges[id].color = color || null;
+    await this._save(data);
+  }
+
+  /**
+   * Updates the connection type on an edge.
+   * @param {string} id
+   * @param {string|null} connectionTypeId
+   */
+  static async updateEdgeConnectionType(id, connectionTypeId) {
+    const data = this.getAll();
+    if (!data.edges[id]) return;
+    data.edges[id].connectionTypeId = connectionTypeId || null;
+    await this._save(data);
+  }
+
+  /**
+   * Updates the direction on an edge.
+   * When swapParties is true the fromFactionId/toFactionId are also swapped,
+   * used when a reversed edge is made one-way so direction points toward the
+   * faction that performed the action rather than away from it.
+   * @param {string} id
+   * @param {"one-way"|"two-way"} direction
+   * @param {{ swapParties?: boolean }} [opts]
+   */
+  static async updateEdgeDirection(id, direction, { swapParties = false } = {}) {
+    const data = this.getAll();
+    if (!data.edges[id]) return;
+    data.edges[id].direction = direction;
+    if (swapParties) {
+      const { fromFactionId, toFactionId } = data.edges[id];
+      data.edges[id].fromFactionId = toFactionId;
+      data.edges[id].toFactionId   = fromFactionId;
+    }
     await this._save(data);
   }
 

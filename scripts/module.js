@@ -1,7 +1,9 @@
 import { FactionStore } from "./data/FactionStore.js";
 import { ProjectStore } from "./data/ProjectStore.js";
 import { RelationshipStore } from "./data/RelationshipStore.js";
+import { FolderStore } from "./data/FolderStore.js";
 import { FactionsSidebarTab } from "./apps/FactionsSidebarTab.js";
+import { FactionDetailApp } from "./apps/FactionDetailApp.js";
 
 const MODULE_ID = "ddf-faction-manager";
 
@@ -10,6 +12,25 @@ Hooks.once("init", async () => {
   FactionStore.register();
   ProjectStore.register();
   RelationshipStore.register();
+  FolderStore.register();
+
+  // ── Faction text enricher  (@Faction[id]{label}) ──────────────────────────────
+  CONFIG.TextEditor.enrichers.push({
+    pattern: /@Faction\[([a-zA-Z0-9]+)\](?:\{([^}]*)\})?/g,
+    enricher: (match, options) => {
+      const id    = match[1];
+      const label = match[2]?.trim() || null;
+      const faction = FactionStore.getAll()[id];
+      const display = label || faction?.name || id;
+
+      const a = document.createElement("a");
+      a.className        = "ddf-faction-link";
+      a.dataset.factionId = id;
+      a.title            = faction?.name ?? id;
+      a.innerHTML        = `<i class="fa-solid fa-shield-halved"></i> ${foundry.utils.escapeHTML(display)}`;
+      return a;
+    }
+  });
 
   // ── Module settings (appear directly in the Game Settings panel) ──────────────
   game.settings.register(MODULE_ID, "factionJournalId", {
@@ -100,6 +121,18 @@ Hooks.once("init", async () => {
   Handlebars.registerHelper("eq", (a, b) => a === b);
 
   console.log(`${MODULE_ID} | Initialized`);
+});
+
+// ── Open faction sheet when a @Faction enricher link is clicked ───────────────
+Hooks.once("ready", () => {
+  document.addEventListener("click", (event) => {
+    const link = event.target.closest(".ddf-faction-link[data-faction-id]");
+    if (!link) return;
+    if (!game.user.isGM) return;
+    event.preventDefault();
+    event.stopPropagation();
+    FactionDetailApp.show(link.dataset.factionId);
+  }, true);
 });
 
 // ── Enhance the Game Settings panel for Faction Manager settings ──────────────

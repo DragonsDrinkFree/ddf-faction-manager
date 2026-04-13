@@ -41,7 +41,9 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
       deleteProject:     FactionDetailApp.#onDeleteProject,
       editNote:          FactionDetailApp.#onEditNote,
       deleteNote:        FactionDetailApp.#onDeleteNote,
-      breakParentLink:   FactionDetailApp.#onBreakParentLink
+      breakParentLink:   FactionDetailApp.#onBreakParentLink,
+      deleteConnection:  FactionDetailApp.#onDeleteConnection,
+      addConnection:     FactionDetailApp.#onAddConnection
     }
   };
 
@@ -119,7 +121,8 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
       catch { return []; }
     })();
     context.factionStats = context.selectedFaction?.stats ?? {};
-    context.journalContent   = await this.#getJournalContent();
+    context.journalContent    = await this.#getJournalContent();
+    context.connectionTypes   = this.#getConnectionTypes();
     context.relationshipItems = this.#selectedFactionId
       ? this.#buildRelationshipItems()
       : [];
@@ -170,7 +173,7 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
       parentItems.push({
         id:             `parent_${faction.parentId}`,
         name:           allFactions[faction.parentId].name,
-        icon:           "fa-solid fa-shield-halved",
+        icon:           "",
         directionSymbol: "↑",
         isAuto:         true,
         isParentLink:   true,
@@ -186,7 +189,7 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
       .map(f => ({
         id:              `sub_${f.id}`,
         name:            f.name,
-        icon:            "fa-solid fa-shield-halved",
+        icon:            "",
         directionSymbol: "↕",
         isAuto:          true,
         color:           ""
@@ -203,7 +206,7 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
         if (edge.type === "faction") {
           const targetId = edge._reversed ? edge.fromFactionId : edge.toFactionId;
           name = allFactions[targetId]?.name ?? "Unknown Faction";
-          icon = "fa-solid fa-shield-halved";
+          icon = "";
         } else if (edge.type === "document") {
           name = edge.documentName ?? "Document";
           icon = ICON[edge.documentType] ?? "fa-solid fa-file";
@@ -215,19 +218,16 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
         const directionSymbol = edge.direction === "two-way" ? "↔"
           : edge._reversed ? "←" : "→";
 
-        const connType = connectionTypes.find(t => t.id === edge.connectionTypeId);
-
         return {
-          id:                  edge.id,
+          id:               edge.id,
           name,
           icon,
+          direction:        edge.direction,
           directionSymbol,
-          isAuto:              false,
-          color:               edge.color ?? "",
-          relationLabel:       edge.relationLabel ?? "",
-          connectionTypeId:    edge.connectionTypeId ?? null,
-          connectionTypeName:  connType?.name ?? null,
-          connectionTypeColor: connType?.color ?? null
+          isReversed:       edge._reversed ?? false,
+          isAuto:           false,
+          relationLabel:    edge.relationLabel ?? "",
+          connectionTypeId: edge.connectionTypeId ?? null
         };
       })
       .sort((a, b) => a.name.localeCompare(b.name));
@@ -254,12 +254,27 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
       });
     });
 
-    // Wire color swatches in the connections pane (overview tab)
-    this.element.querySelectorAll(".rel-color-input").forEach(input => {
-      input.addEventListener("change", async (e) => {
+    // Wire connection-type dropdowns in the connections pane (overview tab)
+    this.element.querySelectorAll(".rel-type-select").forEach(select => {
+      select.addEventListener("change", async (e) => {
         const edgeId = e.target.dataset.edgeId;
-        await RelationshipStore.updateEdgeColor(edgeId, e.target.value);
-        e.target.closest(".rel-color-swatch").style.background = e.target.value;
+        await RelationshipStore.updateEdgeConnectionType(edgeId, e.target.value || null);
+        this.render({ parts: ["content"] });
+      });
+    });
+
+    // Wire direction toggle buttons
+    this.element.querySelectorAll(".rel-dir-btn").forEach(btn => {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const edgeId     = btn.dataset.edgeId;
+        const current    = btn.dataset.direction;
+        const isReversed = btn.dataset.reversed === "true";
+        const next       = current === "two-way" ? "one-way" : "two-way";
+        // When a reversed edge goes two-way → one-way, swap from/to so the
+        // resulting one-way edge points FROM this faction rather than away from it.
+        const swapParties = isReversed && next === "one-way";
+        await RelationshipStore.updateEdgeDirection(edgeId, next, { swapParties });
         this.render({ parts: ["content"] });
       });
     });
@@ -330,13 +345,23 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
       return `<p class="notification warning">Journal page not found. It may have been deleted from the journal directly.</p>`;
     }
 
-    return foundry.applications.ux.TextEditor.implementation.enrichHTML(
+    const enriched = await foundry.applications.ux.TextEditor.implementation.enrichHTML(
       page.text?.content ?? "", {
         relativeTo: page,
         secrets: game.user.isGM,
         async: true
       }
     );
+
+    // Strip any @Faction link that refers to this faction itself (auto-inserted on create)
+    const tmp = document.createElement("div");
+    tmp.innerHTML = enriched;
+    tmp.querySelectorAll(`.ddf-faction-link[data-faction-id="${this.#selectedFactionId}"]`).forEach(el => {
+      const p = el.parentElement;
+      el.remove();
+      if (p?.tagName === "P" && !p.textContent.trim()) p.remove();
+    });
+    return tmp.innerHTML;
   }
 
   static #quarterBars(progress) {
@@ -525,6 +550,20 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
     this.render({ parts: ["content"] });
   }
 
+  static async #onDeleteConnection(_event, target) {
+    const edgeId = target.closest("[data-edge-id]")?.dataset.edgeId;
+    if (!edgeId) return;
+
+    const confirmed = await foundry.applications.api.DialogV2.confirm({
+      window: { title: "Remove Connection" },
+      content: "<p>Remove this connection? This cannot be undone.</p>"
+    });
+    if (!confirmed) return;
+
+    await RelationshipStore.deleteEdge(edgeId);
+    this.render({ parts: ["content"] });
+  }
+
   /**
    * Offer the GM a choice when breaking the parent-faction link:
    *   • Break completely  — removes parentId, no replacement edge
@@ -575,5 +614,238 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
     }
 
     this.render({ force: true });
+  }
+
+  // ─── Add Connection Panel ─────────────────────────────────────────────────────
+
+  static #onAddConnection(_event, target) {
+    this.#closeConnPanel();
+    if (!this.#selectedFactionId) return;
+
+    const fromFactionId = this.#selectedFactionId;
+    const appRect = this.element.getBoundingClientRect();
+    const btnRect = target.getBoundingClientRect();
+
+    const panel = document.createElement("div");
+    panel.className = "mm-search-panel ddf-conn-panel";
+    // Align panel's right edge with the button's right edge, below the button
+    panel.style.right = `${appRect.right - btnRect.right}px`;
+    panel.style.top   = `${btnRect.bottom - appRect.top + 4}px`;
+
+    panel.innerHTML = `
+      <div class="mm-panel-title">Add Connection</div>
+      <div class="mm-panel-options">
+        <button class="mm-option" data-mode="faction">
+          <i class="fa-solid fa-shield-halved"></i> Faction
+        </button>
+        <button class="mm-option" data-mode="document">
+          <i class="fa-solid fa-file"></i> Document
+        </button>
+        <button class="mm-option" data-mode="simple">
+          <i class="fa-solid fa-circle-nodes"></i> Simple Node
+        </button>
+      </div>
+    `;
+
+    panel.querySelector('[data-mode="faction"]').addEventListener("click",   () => this.#showConnFactionSearch(panel, fromFactionId));
+    panel.querySelector('[data-mode="document"]').addEventListener("click",  () => this.#showConnDocumentSearch(panel, fromFactionId));
+    panel.querySelector('[data-mode="simple"]').addEventListener("click",    () => this.#showConnSimpleInput(panel, fromFactionId));
+
+    this.element.appendChild(panel);
+    this.#bindConnPanelDismiss(panel);
+  }
+
+  #showConnFactionSearch(panel, fromFactionId) {
+    const allFactions  = FactionStore.getAll();
+    const liveEdges    = RelationshipStore.getEdgesForFaction(fromFactionId);
+    const connectedIds = new Set(
+      liveEdges.filter(e => e.type === "faction")
+               .map(e => e._reversed ? e.fromFactionId : e.toFactionId)
+    );
+    connectedIds.add(fromFactionId);
+    // Also exclude factions already linked via parent/child hierarchy
+    const faction = allFactions[fromFactionId];
+    if (faction?.parentId) connectedIds.add(faction.parentId);
+    Object.values(allFactions).filter(f => f.parentId === fromFactionId).forEach(f => connectedIds.add(f.id));
+
+    const candidates = Object.values(allFactions).filter(f => !connectedIds.has(f.id));
+
+    panel.innerHTML = `
+      <div class="mm-panel-title">Link Faction</div>
+      <input type="text" class="mm-search-input" placeholder="Filter factions…" autofocus />
+      <div class="mm-search-results">
+        ${candidates.length
+          ? candidates.map(f => `<div class="mm-search-result" data-id="${f.id}">${foundry.utils.escapeHTML(f.name)}</div>`).join("")
+          : "<div class='mm-search-empty'>No factions available</div>"
+        }
+      </div>
+      ${this.#connTypePickerHTML()}
+      ${this.#connDirectionPickerHTML()}
+      <div class="mm-panel-actions"><button class="mm-btn-cancel">Cancel</button></div>
+    `;
+
+    const input   = panel.querySelector(".mm-search-input");
+    const results = panel.querySelector(".mm-search-results");
+
+    input.addEventListener("input", () => {
+      const q = input.value.toLowerCase();
+      results.querySelectorAll(".mm-search-result").forEach(el => {
+        el.style.display = el.textContent.toLowerCase().includes(q) ? "" : "none";
+      });
+    });
+
+    results.addEventListener("click", async (e) => {
+      const el = e.target.closest(".mm-search-result");
+      if (!el) return;
+      const toFactionId      = el.dataset.id;
+      const direction        = this.#connSelectedDirection(panel);
+      const connectionTypeId = this.#connSelectedType(panel);
+      const opts             = { toFactionId };
+      if (connectionTypeId) opts.connectionTypeId = connectionTypeId;
+      await RelationshipStore.createEdge(fromFactionId, "faction", direction, opts);
+      this.#closeConnPanel();
+      this.render({ parts: ["content"] });
+    });
+
+    panel.querySelector(".mm-btn-cancel").addEventListener("click", () => this.#closeConnPanel());
+    input.focus();
+  }
+
+  #showConnDocumentSearch(panel, fromFactionId) {
+    const collections = [
+      { type: "Actor",        icon: "fa-user",     col: game.actors  },
+      { type: "JournalEntry", icon: "fa-book",     col: game.journal },
+      { type: "Item",         icon: "fa-suitcase", col: game.items   },
+      { type: "Scene",        icon: "fa-map",      col: game.scenes  }
+    ];
+
+    const docs = [];
+    for (const { type, icon, col } of collections) {
+      for (const doc of col) docs.push({ uuid: doc.uuid, name: doc.name, type, icon });
+    }
+
+    panel.innerHTML = `
+      <div class="mm-panel-title">Link Document</div>
+      <input type="text" class="mm-search-input" placeholder="Filter documents…" autofocus />
+      <div class="mm-search-results">
+        ${docs.length
+          ? docs.map(d => `
+            <div class="mm-search-result" data-uuid="${d.uuid}" data-type="${d.type}" data-name="${foundry.utils.escapeHTML(d.name)}">
+              <i class="fa-solid ${d.icon}"></i> ${foundry.utils.escapeHTML(d.name)}
+              <span class="mm-result-type">${d.type}</span>
+            </div>`).join("")
+          : "<div class='mm-search-empty'>No documents found</div>"
+        }
+      </div>
+      ${this.#connTypePickerHTML()}
+      ${this.#connDirectionPickerHTML()}
+      <div class="mm-panel-actions"><button class="mm-btn-cancel">Cancel</button></div>
+    `;
+
+    const input   = panel.querySelector(".mm-search-input");
+    const results = panel.querySelector(".mm-search-results");
+
+    input.addEventListener("input", () => {
+      const q = input.value.toLowerCase();
+      results.querySelectorAll(".mm-search-result").forEach(el => {
+        el.style.display = el.dataset.name.toLowerCase().includes(q) ? "" : "none";
+      });
+    });
+
+    results.addEventListener("click", async (e) => {
+      const el = e.target.closest(".mm-search-result");
+      if (!el) return;
+      const direction        = this.#connSelectedDirection(panel);
+      const connectionTypeId = this.#connSelectedType(panel);
+      const opts = { documentUuid: el.dataset.uuid, documentType: el.dataset.type, documentName: el.dataset.name };
+      if (connectionTypeId) opts.connectionTypeId = connectionTypeId;
+      await RelationshipStore.createEdge(fromFactionId, "document", direction, opts);
+      this.#closeConnPanel();
+      this.render({ parts: ["content"] });
+    });
+
+    panel.querySelector(".mm-btn-cancel").addEventListener("click", () => this.#closeConnPanel());
+    input.focus();
+  }
+
+  #showConnSimpleInput(panel, fromFactionId) {
+    panel.innerHTML = `
+      <div class="mm-panel-title">Simple Node</div>
+      <input type="text" class="mm-search-input" placeholder="Node label…" autofocus maxlength="40" />
+      ${this.#connTypePickerHTML()}
+      ${this.#connDirectionPickerHTML()}
+      <div class="mm-panel-actions">
+        <button class="mm-btn-confirm">Add</button>
+        <button class="mm-btn-cancel">Cancel</button>
+      </div>
+    `;
+
+    const input = panel.querySelector(".mm-search-input");
+    input.focus();
+
+    const confirm = async () => {
+      const label = input.value.trim();
+      if (!label) return;
+      const direction        = this.#connSelectedDirection(panel);
+      const connectionTypeId = this.#connSelectedType(panel);
+      const opts             = { label };
+      if (connectionTypeId) opts.connectionTypeId = connectionTypeId;
+      await RelationshipStore.createEdge(fromFactionId, "simple", direction, opts);
+      this.#closeConnPanel();
+      this.render({ parts: ["content"] });
+    };
+
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter")  confirm();
+      if (e.key === "Escape") this.#closeConnPanel();
+    });
+    panel.querySelector(".mm-btn-confirm").addEventListener("click", confirm);
+    panel.querySelector(".mm-btn-cancel").addEventListener("click", () => this.#closeConnPanel());
+  }
+
+  #connTypePickerHTML() {
+    const types = this.#getConnectionTypes();
+    const opts  = types.map(t =>
+      `<option value="${t.id}">${foundry.utils.escapeHTML(t.name)}</option>`
+    ).join("");
+    return `
+      <div class="mm-type-row">
+        <span>Type:</span>
+        <select class="mm-type-select" name="mm_type">
+          <option value="">— None —</option>
+          ${opts}
+        </select>
+      </div>`;
+  }
+
+  #connDirectionPickerHTML() {
+    return `
+      <div class="mm-direction-row">
+        <span>Direction:</span>
+        <label><input type="radio" name="mm_dir" value="one-way" checked> One-way</label>
+        <label><input type="radio" name="mm_dir" value="two-way"> Two-way</label>
+      </div>`;
+  }
+
+  #connSelectedDirection(panel) {
+    return panel.querySelector('input[name="mm_dir"]:checked')?.value ?? "one-way";
+  }
+
+  #connSelectedType(panel) {
+    return panel.querySelector('select[name="mm_type"]')?.value || null;
+  }
+
+  #closeConnPanel() {
+    this.element?.querySelectorAll(".ddf-conn-panel").forEach(el => el.remove());
+  }
+
+  #bindConnPanelDismiss(panel) {
+    const handler = (e) => {
+      if (!panel.contains(e.target)) {
+        panel.remove();
+        document.removeEventListener("mousedown", handler, true);
+      }
+    };
+    setTimeout(() => document.addEventListener("mousedown", handler, true), 50);
   }
 }

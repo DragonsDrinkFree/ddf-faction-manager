@@ -29,10 +29,6 @@
   font-size: 0.82rem;
 }
 
-#ddfFactions .ddf-sidebar-search input {
-  width: 100%;
-  box-sizing: border-box;
-}
 
 #ddfFactions .ddf-sidebar-list {
   flex: 1;
@@ -1330,8 +1326,8 @@
 
 /* Right: connections pane */
 .ddf-faction-detail .faction-connections-pane {
-  width: 165px;
-  min-width: 120px;
+  width: 215px;
+  min-width: 155px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -1362,7 +1358,9 @@
 
 /* Relationship list items (in connections pane) */
 .ddf-faction-detail .rel-list-header {
-  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  padding: 4px 6px 4px 10px;
   font-weight: bold;
   font-size: 0.8rem;
   text-transform: uppercase;
@@ -1371,6 +1369,18 @@
   border-bottom: 1px solid var(--color-border-light-primary);
   flex-shrink: 0;
 }
+
+.ddf-faction-detail .rel-list-header span { flex: 1; }
+
+.ddf-faction-detail .ddf-conn-add-btn {
+  flex-shrink: 0;
+  opacity: 0.6;
+  font-size: 0.75rem;
+  padding: 2px 4px;
+  line-height: 1;
+}
+
+.ddf-faction-detail .ddf-conn-add-btn:hover { opacity: 1; }
 
 .ddf-faction-detail .rel-list-item {
   display: flex;
@@ -1445,31 +1455,39 @@
   opacity: 0.55;
 }
 
-.ddf-faction-detail .rel-color-swatch {
+.ddf-faction-detail .rel-dir-btn {
   flex-shrink: 0;
-  width: 13px;
-  height: 13px;
-  border-radius: 50%;
-  border: 1.5px solid var(--color-border-primary);
-  cursor: pointer;
-  position: relative;
-  display: block;
-}
-
-.ddf-faction-detail .rel-color-swatch.rel-color-unset {
-  background: transparent;
-  border-style: dashed;
-}
-
-.ddf-faction-detail .rel-color-input {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  width: 100%;
-  height: 100%;
-  cursor: pointer;
-  padding: 0;
+  background: none;
   border: none;
+  padding: 0 2px;
+  font-size: 0.85rem;
+  opacity: 0.7;
+  cursor: pointer;
+  line-height: 1;
+  border-radius: 3px;
+  transition: opacity 0.1s, background 0.1s;
+}
+
+.ddf-faction-detail .rel-dir-btn:hover {
+  opacity: 1;
+  background: var(--color-hover-bg);
+}
+
+.ddf-faction-detail .rel-type-select {
+  flex-shrink: 0;
+  max-width: 58px;
+  font-size: 0.68rem;
+  padding: 1px 2px;
+  border-radius: 3px;
+  border: 1px solid var(--color-border-light-primary);
+  background: var(--color-bg-option, #1a1a2e);
+  color: var(--color-text-light-primary, #c9c7b8);
+  cursor: pointer;
+}
+
+.ddf-faction-detail .rel-type-select option {
+  background: var(--color-bg-option, #1a1a2e);
+  color: var(--color-text-light-primary, #c9c7b8);
 }
 
 .ddf-faction-detail .rel-list-empty {
@@ -2383,4 +2401,221 @@
   flex: 1;
   font-size: 0.82rem;
   padding: 2px 4px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   SIDEBAR — CONTROLS ROW (search + sort toggle)
+   ═══════════════════════════════════════════════════════════════════ */
+
+#ddfFactions .ddf-sidebar-controls {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+#ddfFactions .ddf-sidebar-controls .ddf-faction-search {
+  flex: 1;
+  box-sizing: border-box;
+}
+
+#ddfFactions .ddf-sort-toggle {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  font-size: 0.85rem;
+  opacity: 0.7;
+  transition: opacity 0.15s, background 0.1s;
+}
+
+#ddfFactions .ddf-sort-toggle:hover {
+  opacity: 1;
+  background: var(--color-hover-bg);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   SIDEBAR — FOLDER SECTIONS  (matches native Foundry li.folder style)
+   ═══════════════════════════════════════════════════════════════════ */
+
+#ddfFactions .ddf-folder-section {
+  --folder-padding: 6px;
+  --ddf-folder-bg: var(--color-dark-1, #111);
+  border-top: 1px solid var(--color-dark-1, #111);
+}
+
+/* Folder header — mirrors li.folder > .folder-header from foundry2.css */
+#ddfFactions .ddf-folder-header {
+  color: var(--color-light-2, #efe6d8);
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: var(--folder-padding, 6px);
+  line-height: var(--sidebar-folder-height, 24px);
+  /* background-color set via inline style when color present; falls back here */
+  background: var(--color-dark-1, #111);
+  text-shadow: 0 0 3px var(--color-dark-1, #111);
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  cursor: pointer;
+  user-select: none;
+}
+
+/* Folder icon — matches li.folder > .folder-header > i */
+#ddfFactions .ddf-folder-header > i.fa-fw {
+  margin-right: 10px;
+  flex-shrink: 0;
+}
+
+/* Collapsed: switch folder-open icon to folder-closed, matching Foundry */
+#ddfFactions .ddf-folder-section:not(.expanded) .ddf-folder-header > i::before {
+  content: "\f07b"; /* fa-folder (closed) */
+}
+
+/* Folder name — matches li.folder > .folder-header .folder-name */
+#ddfFactions .ddf-folder-name {
+  flex: 1;
+  font-size: var(--font-size-16, 1rem);
+  line-height: var(--sidebar-folder-height, 24px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Control buttons — styled like native Foundry .create-button */
+#ddfFactions .ddf-folder-controls {
+  display: none;
+  align-items: center;
+  gap: 0;
+  flex-shrink: 0;
+}
+
+#ddfFactions .ddf-folder-header:hover .ddf-folder-controls {
+  display: flex;
+}
+
+#ddfFactions .ddf-folder-btn {
+  --button-text-color: var(--color-light-2, #efe6d8);
+  --button-border-color: transparent;
+  --button-background-color: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--sidebar-folder-height, 24px);
+  width: 20px;
+  margin: 0 0 0 3px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  color: var(--color-light-2, #efe6d8);
+  text-shadow: inherit;
+  opacity: 0.85;
+}
+
+#ddfFactions .ddf-folder-btn:hover {
+  opacity: 1;
+  text-shadow: 0 0 6px var(--color-shadow-primary);
+}
+
+/* Folder contents — left border tinted with folder color (same as native .subdirectory) */
+#ddfFactions .ddf-folder-contents {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-left: 6px solid var(--color-dark-1, #111);
+  /* border-left-color set via inline style when color present */
+}
+
+#ddfFactions .ddf-unfiled-section {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  min-height: 4px;
+}
+
+/* Indent faction items within folders to align with the border */
+#ddfFactions .ddf-folder-contents .faction-item-row {
+  padding-left: 6px;
+}
+
+#ddfFactions .ddf-folder-empty {
+  padding: 4px 10px;
+  font-style: italic;
+  font-size: 0.82rem;
+  opacity: 0.5;
+  list-style: none;
+  color: var(--color-text-dark-secondary);
+}
+
+#ddfFactions .ddf-no-factions-hint {
+  padding: 8px 12px;
+  font-style: italic;
+  font-size: 0.85rem;
+  opacity: 0.6;
+  margin: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   SIDEBAR — DRAG & DROP (manual sort mode sections)
+   Only items that JS marks draggable="true" show the grab cursor.
+   ═══════════════════════════════════════════════════════════════════ */
+
+#ddfFactions .faction-item[draggable="true"] {
+  cursor: grab;
+}
+
+#ddfFactions .faction-item[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+#ddfFactions .faction-item.ddf-drag-source {
+  opacity: 0.35;
+}
+
+#ddfFactions .faction-item.ddf-drop-above {
+  box-shadow: inset 0 2px 0 0 var(--color-text-dark-primary);
+}
+
+#ddfFactions .faction-item.ddf-drop-below {
+  box-shadow: inset 0 -2px 0 0 var(--color-text-dark-primary);
+}
+
+#ddfFactions .ddf-folder-header.ddf-drag-over {
+  outline: 2px dashed var(--color-light-2, #efe6d8);
+  outline-offset: -2px;
+}
+
+#ddfFactions .ddf-unfiled-section.ddf-drag-over {
+  background: color-mix(in srgb, var(--color-bg-btn, #4b5ea8) 15%, transparent);
+  outline: 2px dashed var(--color-border-light-primary);
+  border-radius: 3px;
+  min-height: 32px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   FACTION ENRICHER LINKS  (.ddf-faction-link)
+   Rendered wherever @Faction[id]{label} appears in enriched HTML.
+   ═══════════════════════════════════════════════════════════════════ */
+
+.ddf-faction-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  color: var(--color-text-hyperlink, #4f83cc);
+  text-decoration: none;
+  border-bottom: 1px dotted currentColor;
+  transition: opacity 0.1s;
+}
+
+.ddf-faction-link:hover {
+  opacity: 0.75;
+  text-decoration: none;
+}
+
+.ddf-faction-link i {
+  font-size: 0.8em;
+  opacity: 0.8;
 }

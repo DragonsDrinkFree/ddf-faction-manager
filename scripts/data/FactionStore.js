@@ -125,7 +125,7 @@ export class FactionStore {
     const pages = await journal.createEmbeddedDocuments("JournalEntryPage", [{
       name,
       type: "text",
-      text: { content: "", format: 1 }
+      text: { content: `<p>@Faction[${id}]{${name}}</p>`, format: 1 }
     }]);
 
     // Seed stats from the current stat definition defaults
