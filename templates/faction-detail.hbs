@@ -471,6 +471,45 @@
       {{/if}}
     </section>
 
+    {{!-- Event Log Tab --}}
+    <section class="tab eventlog {{#if (eq activeTab "eventlog")}}active{{/if}}" data-tab="eventlog">
+      {{#if selectedFaction}}
+        <div class="event-log-header">
+          <h3 class="event-log-title"><i class="fa-solid fa-clock-rotate-left"></i> Event Log</h3>
+          <span class="event-log-count">{{eventLogEntries.length}} events</span>
+        </div>
+        {{#if eventLogEntries.length}}
+          <ul class="event-log-list">
+            {{#each eventLogEntries}}
+              <li class="event-log-entry event-log-cat-{{category}}">
+                <span class="event-log-icon">
+                  {{#if (eq category "member")}}
+                    <i class="fa-solid fa-user"></i>
+                  {{else if (eq category "objective")}}
+                    <i class="fa-solid fa-bullseye"></i>
+                  {{else}}
+                    <i class="fa-solid fa-link"></i>
+                  {{/if}}
+                </span>
+                <span class="event-log-text">{{text}}</span>
+                <span class="event-log-time" title="{{formattedTime}}">{{formattedTime}}</span>
+              </li>
+            {{/each}}
+          </ul>
+        {{else}}
+          <div class="event-log-empty">
+            <i class="fa-solid fa-hourglass-start"></i>
+            <p>No events recorded yet. Changes to members, objectives, and connections will appear here.</p>
+          </div>
+        {{/if}}
+      {{else}}
+        <div class="faction-no-selection">
+          <i class="fa-solid fa-shield-halved"></i>
+          <p>Select a faction to view the event log.</p>
+        </div>
+      {{/if}}
+    </section>
+
   </div>
 
 </div>

@@ -3,6 +3,7 @@ import { ProjectStore } from "./data/ProjectStore.js";
 import { RelationshipStore } from "./data/RelationshipStore.js";
 import { FolderStore } from "./data/FolderStore.js";
 import { MemberStore } from "./data/MemberStore.js";
+import { EventLogStore } from "./data/EventLogStore.js";
 import { FactionsSidebarTab } from "./apps/FactionsSidebarTab.js";
 import { FactionDetailApp } from "./apps/FactionDetailApp.js";
 
@@ -15,6 +16,7 @@ Hooks.once("init", async () => {
   RelationshipStore.register();
   FolderStore.register();
   MemberStore.register();
+  EventLogStore.register();
 
   // ── Faction text enricher  (@Faction[id]{label}) ──────────────────────────────
   CONFIG.TextEditor.enrichers.push({
@@ -104,6 +106,28 @@ Hooks.once("init", async () => {
       { id: "enemy",   name: "Enemy",   color: "#f44336" }
     ])
   });
+
+  // ── Sandbox Campaign Manager Integration toggles ──────────────────────────────
+  const scmSettings = [
+    { key: "scmMemberAdded",              name: "Member: Added" },
+    { key: "scmMemberRemoved",            name: "Member: Removed" },
+    { key: "scmMemberRankChanged",        name: "Member: Rank Changed" },
+    { key: "scmObjectiveCreated",         name: "Objective: Created" },
+    { key: "scmObjectiveFinished",        name: "Objective: Completed / Reactivated" },
+    { key: "scmProgressNote",             name: "Objective: Progress Note Added" },
+    { key: "scmConnectionEstablished",    name: "Connection: Established" },
+    { key: "scmConnectionTypeChanged",    name: "Connection: Type Changed" },
+    { key: "scmConnectionDirectionChanged", name: "Connection: Direction Changed" }
+  ];
+  for (const { key, name } of scmSettings) {
+    game.settings.register(MODULE_ID, key, {
+      name,
+      scope:   "world",
+      config:  true,
+      type:    Boolean,
+      default: true
+    });
+  }
 
   // ── Sidebar tab ───────────────────────────────────────────────────────────────
   Sidebar.TABS.ddfFactions = {
@@ -403,6 +427,27 @@ Hooks.on("renderSettingsConfig", (_app, html) => {
   ctWrap.appendChild(addCtBtn);
 
   ctInput.replaceWith(ctWrap);
+
+  // ── SCM Integration: inject section header before first SCM setting ───────
+  const scmFirstInput = root.querySelector(`input[name="${MODULE_ID}.scmMemberAdded"]`);
+  if (scmFirstInput) {
+    const formGroup = scmFirstInput.closest(".form-group");
+    if (formGroup) {
+      const header = document.createElement("div");
+      header.className = "ddf-settings-section-header";
+      header.innerHTML = `
+        <h3 class="ddf-settings-section-title">
+          <i class="fa-solid fa-book-open"></i> Sandbox Campaign Manager Integration
+        </h3>
+        <p class="ddf-settings-section-hint">
+          If the Sandbox Campaign Manager module is present, these options determine
+          which faction events are sent to session notes. Disabled events are still
+          logged in the faction's Event Log.
+        </p>
+      `;
+      formGroup.parentElement.insertBefore(header, formGroup);
+    }
+  }
 
   // ── Relationship Map Background Image: swap text input for file picker ────
   const bgImgInput = root.querySelector(

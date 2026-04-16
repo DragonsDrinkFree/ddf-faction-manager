@@ -3272,3 +3272,132 @@
   border-radius: 3px;
   cursor: pointer;
 }
+
+/* ─── Event Log Tab ────────────────────────────────────────────────────────── */
+
+.ddf-faction-detail .tab.eventlog {
+  flex-direction: column;
+  padding: 10px 14px;
+  gap: 0;
+}
+
+.ddf-faction-detail .event-log-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--color-border-light-primary);
+  margin-bottom: 8px;
+  flex-shrink: 0;
+}
+
+.ddf-faction-detail .event-log-title {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ddf-faction-detail .event-log-count {
+  font-size: 0.75rem;
+  opacity: 0.55;
+}
+
+.ddf-faction-detail .event-log-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ddf-faction-detail .event-log-entry {
+  display: grid;
+  grid-template-columns: 20px 1fr auto;
+  align-items: baseline;
+  gap: 8px;
+  padding: 5px 6px;
+  border-radius: 4px;
+  font-size: 0.82rem;
+  transition: background 0.1s;
+}
+
+.ddf-faction-detail .event-log-entry:hover {
+  background: var(--color-hover-bg, rgba(255,255,255,0.06));
+}
+
+.ddf-faction-detail .event-log-icon {
+  text-align: center;
+  font-size: 0.75rem;
+  opacity: 0.7;
+}
+
+/* Category tints */
+.ddf-faction-detail .event-log-cat-member   .event-log-icon { color: #6aadff; }
+.ddf-faction-detail .event-log-cat-objective .event-log-icon { color: #7ddf7d; }
+.ddf-faction-detail .event-log-cat-connection .event-log-icon { color: #e5a840; }
+
+.ddf-faction-detail .event-log-text {
+  flex: 1;
+  line-height: 1.35;
+}
+
+.ddf-faction-detail .event-log-time {
+  font-size: 0.72rem;
+  opacity: 0.45;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.ddf-faction-detail .event-log-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex: 1;
+  opacity: 0.5;
+  text-align: center;
+  font-size: 0.85rem;
+  font-style: italic;
+  padding: 40px 20px;
+}
+
+.ddf-faction-detail .event-log-empty i {
+  font-size: 2rem;
+  opacity: 0.4;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   SETTINGS PANEL — SCM Integration section header
+   ═══════════════════════════════════════════════════════════════════ */
+
+.ddf-settings-section-header {
+  margin: 1.25rem 0 0.5rem;
+  padding: 0.6rem 0.75rem;
+  border-left: 3px solid var(--color-border-highlight, #7c6f57);
+  background: rgba(0,0,0,0.07);
+  border-radius: 0 4px 4px 0;
+}
+
+.ddf-settings-section-title {
+  margin: 0 0 0.3rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.ddf-settings-section-hint {
+  margin: 0;
+  font-size: 0.8rem;
+  opacity: 0.7;
+  font-style: italic;
+  line-height: 1.4;
+}

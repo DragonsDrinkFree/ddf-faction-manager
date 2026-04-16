@@ -2,6 +2,8 @@ import { FactionStore } from "../data/FactionStore.js";
 import { ProjectStore } from "../data/ProjectStore.js";
 import { RelationshipStore } from "../data/RelationshipStore.js";
 import { MemberStore } from "../data/MemberStore.js";
+import { EventLogStore } from "../data/EventLogStore.js";
+import { tryAddSessionNote } from "../utils/SandboxIntegration.js";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -75,7 +77,8 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
         ".faction-journal-body",
         ".faction-connections-body",
         ".project-notes-log",
-        ".project-items"
+        ".project-items",
+        ".event-log-list"
       ]
     }
   };
@@ -111,9 +114,10 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
     const context = await super._prepareContext(options);
     context.activeTab = this.#activeTab;
     context.tabs = [
-      { id: "overview", label: "Overview",   icon: "fa-solid fa-scroll",      cssClass: this.#activeTab === "overview" ? "active" : "" },
-      { id: "projects", label: "Objectives", icon: "fa-solid fa-list-check",  cssClass: this.#activeTab === "projects" ? "active" : "" },
-      { id: "members",  label: "Members",    icon: "fa-solid fa-users",        cssClass: this.#activeTab === "members"  ? "active" : "" }
+      { id: "overview",  label: "Overview",   icon: "fa-solid fa-scroll",      cssClass: this.#activeTab === "overview"  ? "active" : "" },
+      { id: "projects",  label: "Objectives", icon: "fa-solid fa-list-check",  cssClass: this.#activeTab === "projects"  ? "active" : "" },
+      { id: "members",   label: "Members",    icon: "fa-solid fa-users",       cssClass: this.#activeTab === "members"   ? "active" : "" },
+      { id: "eventlog",  label: "Event Log",  icon: "fa-solid fa-clock-rotate-left", cssClass: this.#activeTab === "eventlog" ? "active" : "" }
     ];
     return context;
   }
@@ -171,10 +175,26 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
     context.selectedMemberId    = this.#selectedMemberId;
     context.selectedMember      = await this.#buildSelectedMemberContext();
 
+    // Event Log tab
+    context.eventLogEntries = this.#selectedFactionId
+      ? EventLogStore.getForFaction(this.#selectedFactionId).map(e => ({
+          ...e,
+          formattedTime: new Date(e.timestamp).toLocaleString()
+        }))
+      : [];
+
     return context;
   }
 
   // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+  /** Log an event for the current faction and optionally push to Sandbox. */
+  async #logEvent(category, text, settingKey = null) {
+    if (!this.#selectedFactionId) return;
+    const factionName = FactionStore.getAll()[this.#selectedFactionId]?.name ?? "Faction";
+    await EventLogStore.addEntry(this.#selectedFactionId, category, text);
+    await tryAddSessionNote(text, factionName, settingKey);
+  }
 
   #getConnectionTypes() {
     try {
@@ -296,7 +316,12 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
     this.element.querySelectorAll(".rel-type-select").forEach(select => {
       select.addEventListener("change", async (e) => {
         const edgeId = e.target.dataset.edgeId;
-        await RelationshipStore.updateEdgeConnectionType(edgeId, e.target.value || null);
+        const typeId = e.target.value || null;
+        await RelationshipStore.updateEdgeConnectionType(edgeId, typeId);
+        const typeName = typeId
+          ? (this.#getConnectionTypes().find(t => t.id === typeId)?.name ?? typeId)
+          : "none";
+        await this.#logEvent("connection", `Connection type changed to: ${typeName}`, "scmConnectionTypeChanged");
         this.render({ parts: ["content"] });
       });
     });
@@ -309,10 +334,9 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
         const current    = btn.dataset.direction;
         const isReversed = btn.dataset.reversed === "true";
         const next       = current === "two-way" ? "one-way" : "two-way";
-        // When a reversed edge goes two-way → one-way, swap from/to so the
-        // resulting one-way edge points FROM this faction rather than away from it.
         const swapParties = isReversed && next === "one-way";
         await RelationshipStore.updateEdgeDirection(edgeId, next, { swapParties });
+        await this.#logEvent("connection", `Connection direction changed to: ${next}`, "scmConnectionDirectionChanged");
         this.render({ parts: ["content"] });
       });
     });
@@ -376,7 +400,12 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
     const memberRankSelect = this.element.querySelector(".member-rank-select");
     if (memberRankSelect && this.#selectedMemberId) {
       memberRankSelect.addEventListener("change", async (e) => {
-        await MemberStore.updateMember(this.#selectedMemberId, { rankId: e.target.value || null });
+        const rankId = e.target.value || null;
+        await MemberStore.updateMember(this.#selectedMemberId, { rankId });
+        const { members, ranks } = MemberStore.getAll();
+        const memberName = members[this.#selectedMemberId]?.name ?? "Member";
+        const rankName   = rankId ? (ranks[rankId]?.name ?? "Unknown") : "Unranked";
+        await this.#logEvent("member", `${memberName}'s rank changed to: ${rankName}`, "scmMemberRankChanged");
         this.render({ parts: ["content"] });
       });
     }
@@ -579,6 +608,7 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
     if (!name) return;
     const project = await ProjectStore.create(this.#selectedFactionId, name);
     this.#selectedProjectId = project.id;
+    await this.#logEvent("objective", `Objective created: ${project.name}`, "scmObjectiveCreated");
     this.render();
   }
 
@@ -630,6 +660,9 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
       this.#editingNoteId = null;
     } else {
       await ProjectStore.addNote(this.#selectedProjectId, text, delta);
+      const projectName = ProjectStore.getAll()[this.#selectedProjectId]?.name ?? "Objective";
+      const progressStr = delta ? ` (${delta > 0 ? "+" : ""}${delta}%)` : "";
+      await this.#logEvent("objective", `Progress note on "${projectName}"${progressStr}: ${text}`, "scmProgressNote");
     }
 
     this.render({ parts: ["content"] });
@@ -637,13 +670,17 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
 
   static async #onFinishProject(_event, _target) {
     if (!this.#selectedProjectId) return;
+    const projectName = ProjectStore.getAll()[this.#selectedProjectId]?.name ?? "Objective";
     await ProjectStore.update(this.#selectedProjectId, { status: "finished" });
+    await this.#logEvent("objective", `Objective completed: ${projectName}`, "scmObjectiveFinished");
     this.render({ parts: ["content"] });
   }
 
   static async #onReactivateProject(_event, _target) {
     if (!this.#selectedProjectId) return;
+    const projectName = ProjectStore.getAll()[this.#selectedProjectId]?.name ?? "Objective";
     await ProjectStore.update(this.#selectedProjectId, { status: "active" });
+    await this.#logEvent("objective", `Objective reactivated: ${projectName}`, "scmObjectiveFinished");
     this.render({ parts: ["content"] });
   }
 
@@ -867,6 +904,15 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
       const opts             = { toFactionId };
       if (connectionTypeId) opts.connectionTypeId = connectionTypeId;
       await RelationshipStore.createEdge(fromFactionId, "faction", direction, opts);
+      const fromName   = FactionStore.getAll()[fromFactionId]?.name ?? "Faction";
+      const toName     = FactionStore.getAll()[toFactionId]?.name   ?? "Faction";
+      const typeName   = connectionTypeId
+        ? (this.#getConnectionTypes().find(t => t.id === connectionTypeId)?.name ?? "")
+        : "";
+      const dirArrow   = direction === "two-way" ? "↔" : "→";
+      await this.#logEvent("connection",
+        `Connection established: ${fromName} ${dirArrow} ${toName}${typeName ? ` (${typeName})` : ""}`,
+        "scmConnectionEstablished");
       this.#closeConnPanel();
       this.render({ parts: ["content"] });
     });
@@ -924,6 +970,13 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
       const opts = { documentUuid: el.dataset.uuid, documentType: el.dataset.type, documentName: el.dataset.name };
       if (connectionTypeId) opts.connectionTypeId = connectionTypeId;
       await RelationshipStore.createEdge(fromFactionId, "document", direction, opts);
+      const typeName = connectionTypeId
+        ? (this.#getConnectionTypes().find(t => t.id === connectionTypeId)?.name ?? "")
+        : "";
+      const dirArrow = direction === "two-way" ? "↔" : "→";
+      await this.#logEvent("connection",
+        `Document linked: ${el.dataset.name} ${dirArrow}${typeName ? ` (${typeName})` : ""}`,
+        "scmConnectionEstablished");
       this.#closeConnPanel();
       this.render({ parts: ["content"] });
     });
@@ -1062,6 +1115,7 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
         actorUuid: el.dataset.uuid
       });
       this.#selectedMemberId = member.id;
+      await this.#logEvent("member", `Member added: ${member.name}`, "scmMemberAdded");
       panel.remove();
       this.render({ parts: ["content"] });
     });
@@ -1071,6 +1125,7 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
       const name   = input.value.trim() || "Unnamed Member";
       const member = await MemberStore.createMember(factionId, { name });
       this.#selectedMemberId = member.id;
+      await this.#logEvent("member", `Member added: ${member.name}`, "scmMemberAdded");
       panel.remove();
       this.render({ parts: ["content"] });
     });
@@ -1087,6 +1142,7 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
         actorUuid: actor.uuid
       });
       this.#selectedMemberId = member.id;
+      await this.#logEvent("member", `Member added: ${member.name}`, "scmMemberAdded");
       panel.remove();
       this.render({ parts: ["content"] });
     });
@@ -1203,6 +1259,7 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
     });
     if (!confirmed) return;
 
+    await this.#logEvent("member", `Member removed: ${member.name}`, "scmMemberRemoved");
     await MemberStore.deleteMember(this.#selectedMemberId);
     this.#selectedMemberId = null;
     this.render({ parts: ["content"] });
