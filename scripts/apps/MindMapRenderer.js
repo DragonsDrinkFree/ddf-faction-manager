@@ -36,6 +36,7 @@ const MAX_SCALE = 5;
  *   onContextMenu:     (svgX, svgY, clientX, clientY) => void
  *   onNodeContextMenu: (nodeKey, edge|null, clientX, clientY) => void
  *   members:           getter → object (global mode — all members keyed by id)
+ *   pinnedDocuments:   getter → object (global mode — pinned docs keyed by uuid)
  *   onSetPOV:          (factionId) => void  (global mode — toggles selected node)
  */
 export class MindMapRenderer {
@@ -134,6 +135,21 @@ export class MindMapRenderer {
   /** Restores a previously saved pan/zoom state (call before mount()). */
   setTransform(t) {
     if (t && typeof t.x === "number") this.#transform = { ...t };
+  }
+
+  /**
+   * Pan so that the node identified by key is centred in the viewport.
+   * No-ops if the key is not found (e.g. local mode or node not rendered).
+   */
+  centerOn(key) {
+    if (!this._globalNodeMap) return;
+    const node = this._globalNodeMap[key];
+    if (!node) return;
+    const w = this.#svg?.clientWidth  || this.#container.clientWidth  || 600;
+    const h = this.#svg?.clientHeight || this.#container.clientHeight || 400;
+    this.#transform.x = w / 2 - node.x * this.#transform.scale;
+    this.#transform.y = h / 2 - node.y * this.#transform.scale;
+    this.#applyTransform();
   }
 
   // ─── Local Mode ───────────────────────────────────────────────────────────────
@@ -289,8 +305,9 @@ export class MindMapRenderer {
     const nodes    = this.#buildGlobalNodes(cx, cy);
     const nodeMap  = Object.fromEntries(nodes.map(n => [n.key, n]));
 
-    // Build edge descriptors
+    // Build edge descriptors, then assign curve offsets based on actual positions
     const edgeDescs = this.#buildGlobalEdgeDescs();
+    this.#assignEdgeCurveOffsets(edgeDescs, nodeMap);
 
     // Layer order: orbit rings → spokes → edges → nodes
     const orbitGroup = this.#el("g", { class: "mm-orbit-rings" });
@@ -374,15 +391,21 @@ export class MindMapRenderer {
     }
 
     // Render edges (behind nodes)
-    const edgeEls = {}; // key = "fromKey|toKey"
-    for (const desc of edgeDescs) {
+    // Use an indexed key to support multiple edges between the same node pair.
+    const edgeEls = {};
+    edgeDescs.forEach((desc, idx) => {
       const fromNode = nodeMap[desc.fromKey];
       const toNode   = nodeMap[desc.toKey];
-      if (!fromNode || !toNode) continue;
-      const line = this.#renderGlobalEdge(fromNode, toNode, desc);
-      edgeGroup.appendChild(line);
-      edgeEls[`${desc.fromKey}|${desc.toKey}`] = { line, fromKey: desc.fromKey, toKey: desc.toKey };
-    }
+      if (!fromNode || !toNode) return;
+      const el = this.#renderGlobalEdge(fromNode, toNode, desc);
+      edgeGroup.appendChild(el);
+      edgeEls[`${desc.fromKey}|${desc.toKey}|${idx}`] = {
+        line: el,
+        fromKey: desc.fromKey,
+        toKey:   desc.toKey,
+        curveOffset: desc.curveOffset ?? 0
+      };
+    });
 
     // Render nodes
     const nodeEls = {};
@@ -393,11 +416,11 @@ export class MindMapRenderer {
     }
 
     // Wire drag + left-click (POV toggle) + right-click on each node.
-    // Member and document nodes get drag only — no POV toggle or context menu.
+    // Member nodes get drag only. Faction and document nodes also get context menu.
     for (const { el, node } of Object.values(nodeEls)) {
       this.#wireNodeDrag(el, node, null, null, true);
 
-      if (!node.isMember && !node.isDocument) {
+      if (!node.isMember) {
         el.addEventListener("contextmenu", (e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -513,8 +536,17 @@ export class MindMapRenderer {
       docMap.get(uuid).factionIds.push(edge.fromFactionId);
     }
 
+    // Merge pinned documents — they appear even with no faction edges
+    const pinnedDocs = this.#config.pinnedDocuments ?? {};
+    for (const [uuid, pd] of Object.entries(pinnedDocs)) {
+      if (!docMap.has(uuid)) {
+        docMap.set(uuid, { name: pd.documentName, docType: pd.documentType, factionIds: [] });
+      }
+    }
+
     docMap.forEach(({ name, docType, factionIds }, uuid) => {
-      const key = `doc_${uuid}`;
+      const key        = `doc_${uuid}`;
+      const isSelected = key === povFactionId;
       let pos = saved[key];
       if (!pos) {
         const knownPos = factionIds.map(id => posMap[id]).filter(Boolean);
@@ -527,18 +559,35 @@ export class MindMapRenderer {
         }
       }
       posMap[key] = pos;
+
+      let docResolvedColor = null;
+      if (isSelected) {
+        docResolvedColor = "#FFD700";
+      } else if (povFactionId && !povFactionId.startsWith("doc_")) {
+        const connectionTypes = this.#config.connectionTypes ?? [];
+        const connectingEdge = Object.values(edgesMap).find(e =>
+          e.type === "document" && e.documentUuid === uuid && e.fromFactionId === povFactionId
+        );
+        if (connectingEdge) {
+          const typeColor = connectingEdge.connectionTypeId
+            ? connectionTypes.find(t => t.id === connectingEdge.connectionTypeId)?.color ?? null
+            : null;
+          docResolvedColor = connectingEdge.color ?? typeColor ?? "#a0a8c0";
+        }
+      }
+
       nodes.push({
         key,
-        label:        name,
-        type:         docType === "Actor" ? "doc-actor" : "doc-other",
+        label:         name,
+        type:          docType === "Actor" ? "doc-actor" : "doc-other",
         x: pos.x, y: pos.y,
         edge: null, edgeStyle: null,
-        resolvedColor: null,
-        radius:       R.docGlobal,
-        isSubFaction: false,
-        isMember:     false,
-        isDocument:   true,
-        documentType: docType
+        resolvedColor: docResolvedColor,
+        radius:        R.docGlobal,
+        isSubFaction:  false,
+        isMember:      false,
+        isDocument:    true,
+        documentType:  docType
       });
     });
 
@@ -625,10 +674,18 @@ export class MindMapRenderer {
 
     if (!statDefinitions?.length) return R.factionGlobal;
 
-    const values = statDefinitions.map(s => {
-      const v = parseFloat(stats[s.id]);
-      return isNaN(v) ? (s.default ?? 0) : v;
-    });
+    // Only include stats whose stored value is numeric; skip text-value stats entirely
+    // so they don't skew the average/max by contributing a default of 0.
+    const values = [];
+    for (const s of statDefinitions) {
+      const raw = stats[s.id];
+      const hasTextValue = raw !== undefined && raw !== null && raw !== "" && isNaN(parseFloat(raw));
+      if (hasTextValue) continue;
+      const v = parseFloat(raw);
+      values.push(isNaN(v) ? (s.default ?? 0) : v);
+    }
+
+    if (!values.length) return R.factionGlobal;
 
     let rawValue;
     if (nodeSizeDetermination === "highest") {
@@ -648,7 +705,7 @@ export class MindMapRenderer {
 
     // sqrt scaling: value=1 → scale=1 (base radius), clamped [0.4, 2.5]
     const scale = rawValue > 0
-      ? Math.max(0.4, Math.min(2.5, Math.sqrt(rawValue)))
+      ? Math.max(0.4, Math.min(10, Math.sqrt(rawValue)))
       : 0.4;
     return R.factionGlobal * scale;
   }
@@ -656,6 +713,7 @@ export class MindMapRenderer {
   /** Determine a JS-applied fill/stroke color for a global-mode faction node. */
   #resolveGlobalNodeColor(factionId, isPOV) {
     const { povFactionId, edges: edgesMap, allFactions } = this.#config;
+    const connectionTypes = this.#config.connectionTypes ?? [];
 
     // POV faction: gold (matched by CSS class mm-node-type-pov, no JS override needed)
     if (isPOV) return null;
@@ -665,6 +723,21 @@ export class MindMapRenderer {
 
     const allEdges = Object.values(edgesMap);
 
+    // POV is a document node — highlight factions that have an edge to that document
+    if (povFactionId.startsWith("doc_")) {
+      const docUuid = povFactionId.slice(4);
+      const connectingEdge = allEdges.find(e =>
+        e.type === "document" && e.documentUuid === docUuid && e.fromFactionId === factionId
+      );
+      if (connectingEdge) {
+        const typeColor = connectingEdge.connectionTypeId
+          ? connectionTypes.find(t => t.id === connectingEdge.connectionTypeId)?.color ?? null
+          : null;
+        return connectingEdge.color ?? typeColor ?? "#a0a8c0";
+      }
+      return null;
+    }
+
     // Check for a stored faction-to-faction edge connecting this node to the POV
     const connectingEdge = allEdges.find(e =>
       e.type === "faction" && (
@@ -673,7 +746,6 @@ export class MindMapRenderer {
       )
     );
     if (connectingEdge) {
-      const connectionTypes = this.#config.connectionTypes ?? [];
       const typeColor = connectingEdge.connectionTypeId
         ? connectionTypes.find(t => t.id === connectingEdge.connectionTypeId)?.color ?? null
         : null;
@@ -731,20 +803,133 @@ export class MindMapRenderer {
     return descs;
   }
 
+  /**
+   * Assigns perpendicular curve offsets to edges that visually overlap.
+   * Two edges overlap when they share a canonical node pair (A↔B + B↔A)
+   * OR when they share an endpoint and their vectors are nearly parallel
+   * (e.g. sub-faction and parent both connecting to the same distant node).
+   * Must be called after nodeMap is built so positions are available.
+   *
+   * @param {Array}  descs   — edge descriptor array (mutated in place)
+   * @param {object} nodeMap — key → node with .x/.y
+   */
+  #assignEdgeCurveOffsets(descs, nodeMap) {
+    const CURVE_BASE        = 40;             // px perpendicular offset per lane
+    const ANGLE_THRESHOLD   = 20 * Math.PI / 180; // radians — edges closer than this overlap
+
+    const assigned = new Set(); // desc indices already given an offset
+
+    const applyOffsets = (indices) => {
+      // Filter to indices not yet assigned, then apply symmetric spread
+      const targets = indices.filter(i => !assigned.has(i));
+      if (targets.length < 2) return;
+      const n     = targets.length;
+      const start = -((n - 1) / 2) * CURVE_BASE;
+      targets.forEach((i, pos) => {
+        descs[i].curveOffset = start + pos * CURVE_BASE;
+        assigned.add(i);
+      });
+    };
+
+    // ── Pass 1: exact canonical pair (A→B + B→A, or two A→B edges) ───────────
+    const pairGroups = new Map();
+    descs.forEach((desc, i) => {
+      const canon = [desc.fromKey, desc.toKey].sort().join("|||");
+      if (!pairGroups.has(canon)) pairGroups.set(canon, []);
+      pairGroups.get(canon).push(i);
+    });
+    for (const indices of pairGroups.values()) {
+      if (indices.length >= 2) applyOffsets(indices);
+    }
+
+    // ── Pass 2: shared endpoint + nearly parallel ─────────────────────────────
+    // Group by shared toKey (convergence) and shared fromKey (divergence).
+    const groupByEndpoint = (keyFn, otherKeyFn) => {
+      const groups = new Map();
+      descs.forEach((desc, i) => {
+        const k = keyFn(desc);
+        if (!groups.has(k)) groups.set(k, []);
+        groups.get(k).push(i);
+      });
+      for (const [sharedKey, indices] of groups.entries()) {
+        if (indices.length < 2) continue;
+        const sharedNode = nodeMap[sharedKey];
+        if (!sharedNode) continue;
+
+        // Compute edge angle at the shared endpoint for each desc
+        const withAngle = indices.map(i => {
+          const otherKey  = otherKeyFn(descs[i]);
+          const otherNode = nodeMap[otherKey];
+          if (!otherNode) return null;
+          const angle = Math.atan2(otherNode.y - sharedNode.y, otherNode.x - sharedNode.x);
+          return { i, angle };
+        }).filter(Boolean);
+
+        // Sort by angle and cluster edges within the threshold
+        withAngle.sort((a, b) => a.angle - b.angle);
+        const clusters = [];
+        for (const e of withAngle) {
+          let placed = false;
+          for (const cluster of clusters) {
+            const diff = Math.abs(e.angle - cluster[0].angle);
+            if (Math.min(diff, 2 * Math.PI - diff) < ANGLE_THRESHOLD) {
+              cluster.push(e); placed = true; break;
+            }
+          }
+          if (!placed) clusters.push([e]);
+        }
+        for (const cluster of clusters) {
+          if (cluster.length >= 2) applyOffsets(cluster.map(e => e.i));
+        }
+      }
+    };
+
+    groupByEndpoint(d => d.toKey,   d => d.fromKey); // convergence
+    groupByEndpoint(d => d.fromKey, d => d.toKey);   // divergence
+  }
+
   #renderGlobalEdge(fromNode, toNode, desc) {
     const { x1, y1, x2, y2 } = this.#edgeEndpoints(fromNode, toNode);
-    const line = this.#el("line", {
-      x1, y1, x2, y2,
-      class: `mm-edge${desc.style === "dashed" ? " mm-dashed" : ""}`
-    });
-    // Use inline style so it wins over the CSS class stroke rule
-    if (desc.color) line.style.stroke = desc.color;
-    if (desc.style === "one-way")  line.setAttribute("marker-end", "url(#arrow-end)");
-    if (desc.style === "two-way") {
-      line.setAttribute("marker-end",   "url(#arrow-end)");
-      line.setAttribute("marker-start", "url(#arrow-start)");
+    const curveOffset = desc.curveOffset ?? 0;
+    const cls = `mm-edge${desc.style === "dashed" ? " mm-dashed" : ""}`;
+
+    let el;
+    if (curveOffset === 0) {
+      el = this.#el("line", { x1, y1, x2, y2, class: cls });
+    } else {
+      el = this.#el("path", {
+        d:    this.#curvedPath(x1, y1, x2, y2, curveOffset),
+        class: cls,
+        fill: "none"
+      });
     }
-    return line;
+
+    if (desc.color) el.style.stroke = desc.color;
+    if (desc.style === "one-way")  el.setAttribute("marker-end", "url(#arrow-end)");
+    if (desc.style === "two-way") {
+      el.setAttribute("marker-end",   "url(#arrow-end)");
+      el.setAttribute("marker-start", "url(#arrow-start)");
+    }
+    return el;
+  }
+
+  /**
+   * Cubic bezier path that creates an S-curve between two points.
+   * The two control points are placed at 1/3 and 2/3 along the line and offset
+   * perpendicularly in OPPOSITE directions, so strands with +offset and -offset
+   * cross at the midpoint — producing a DNA-helix appearance when paired.
+   */
+  #curvedPath(x1, y1, x2, y2, offset) {
+    const dx = x2 - x1, dy = y2 - y1;
+    const len = Math.sqrt(dx * dx + dy * dy) || 1;
+    const px = -dy / len, py = dx / len; // perpendicular unit vector
+
+    const cp1x = x1 + dx / 3 + px * offset;
+    const cp1y = y1 + dy / 3 + py * offset;
+    const cp2x = x1 + 2 * dx / 3 - px * offset;
+    const cp2y = y1 + 2 * dy / 3 - py * offset;
+
+    return `M${x1},${y1} C${cp1x},${cp1y} ${cp2x},${cp2y} ${x2},${y2}`;
   }
 
   // ─── Shared Node Rendering ────────────────────────────────────────────────────
@@ -831,12 +1016,22 @@ export class MindMapRenderer {
       g.appendChild(icon);
     }
 
-    // Label — member nodes use tight wrap so text fits inside the diamond
-    const wrapAt     = node.isMember ? 7 : 12;
-    const lines      = this.#wrapText(node.label, wrapAt);
-    const lineHeight = node.isMember ? 11 : 13;
-    const totalH     = lines.length * lineHeight;
-    const startY     = (node.type === "document" ? 6 : 0) + (-totalH / 2 + lineHeight / 2);
+    // Label — scale font/wrap with node radius for variable-size global nodes
+    let fontSize   = null; // null → CSS controls font-size
+    let wrapAt     = node.isMember ? 7 : 12;
+    let lineHeight = node.isMember ? 11 : 13;
+
+    if (node.type === "pov" || node.type === "faction-global") {
+      const r  = node.radius ?? R.factionGlobal;
+      fontSize   = Math.max(9, r * 0.35);
+      lineHeight = fontSize * 1.2;
+      // chars per line: available width ÷ avg char width
+      wrapAt = Math.max(6, Math.floor((r * 1.5) / (fontSize * 0.55)));
+    }
+
+    const lines  = this.#wrapText(node.label, wrapAt);
+    const totalH = lines.length * lineHeight;
+    const startY = (node.type === "document" ? 6 : 0) + (-totalH / 2 + lineHeight / 2);
 
     lines.forEach((line, i) => {
       const t = this.#el("text", {
@@ -846,6 +1041,7 @@ export class MindMapRenderer {
         "dominant-baseline": "middle",
         "pointer-events":   "none"
       });
+      if (fontSize !== null) t.style.fontSize = `${fontSize}px`;
       t.textContent = line;
       g.appendChild(t);
     });
@@ -1008,7 +1204,7 @@ export class MindMapRenderer {
     const { nodeKey, node, nodeEl, isGlobal, moved } = this.#drag;
     nodeEl.style.cursor = "";
 
-    if (isGlobal && !moved && this.#config.onSetPOV && !node.isMember && !node.isDocument) {
+    if (isGlobal && !moved && this.#config.onSetPOV && !node.isMember) {
       this.#config.onSetPOV(nodeKey);
     } else if (isGlobal && node.isSubFaction && moved) {
       // Sub-faction dragged: normalize all siblings to same orbit radius
@@ -1144,13 +1340,17 @@ export class MindMapRenderer {
 
     // Stored relationship edges
     if (this._globalEdgeEls) {
-      for (const { line, fromKey, toKey } of Object.values(this._globalEdgeEls)) {
+      for (const { line, fromKey, toKey, curveOffset } of Object.values(this._globalEdgeEls)) {
         if (fromKey !== factionKey && toKey !== factionKey) continue;
         const fn = nodeMap[fromKey]; const tn = nodeMap[toKey];
         if (!fn || !tn) continue;
         const { x1, y1, x2, y2 } = this.#edgeEndpoints(fn, tn);
-        line.setAttribute("x1", x1); line.setAttribute("y1", y1);
-        line.setAttribute("x2", x2); line.setAttribute("y2", y2);
+        if (curveOffset) {
+          line.setAttribute("d", this.#curvedPath(x1, y1, x2, y2, curveOffset));
+        } else {
+          line.setAttribute("x1", x1); line.setAttribute("y1", y1);
+          line.setAttribute("x2", x2); line.setAttribute("y2", y2);
+        }
       }
     }
 

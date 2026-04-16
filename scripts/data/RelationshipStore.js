@@ -40,9 +40,38 @@ export class RelationshipStore {
 
   static getAll() {
     const data = game.settings.get(MODULE_ID, SETTING_KEY) ?? {};
-    if (!data.edges) data.edges = {};
-    if (!data.positions) data.positions = {};
+    if (!data.edges)           data.edges           = {};
+    if (!data.positions)       data.positions        = {};
+    if (!data.pinnedDocuments) data.pinnedDocuments  = {};
     return data;
+  }
+
+  /** Returns the pinnedDocuments map keyed by UUID. */
+  static getPinnedDocuments() {
+    return this.getAll().pinnedDocuments;
+  }
+
+  /**
+   * Adds a document to the map as a free-floating node (no faction edge required).
+   * @param {string} uuid
+   * @param {string} documentType  e.g. "Actor", "JournalEntry", "Scene", "Item", "RollTable"
+   * @param {string} documentName
+   */
+  static async pinDocument(uuid, documentType, documentName) {
+    const data = this.getAll();
+    data.pinnedDocuments[uuid] = { uuid, documentType, documentName };
+    await this._save(data);
+  }
+
+  /**
+   * Removes a document from the pinned set.
+   * The node may still appear on the map if it has faction edges.
+   * @param {string} uuid
+   */
+  static async unpinDocument(uuid) {
+    const data = this.getAll();
+    delete data.pinnedDocuments[uuid];
+    await this._save(data);
   }
 
   static async _save(data, { silent = false } = {}) {
@@ -196,6 +225,23 @@ export class RelationshipStore {
    * Called by FactionStore.delete() to keep data consistent.
    * @param {string} factionId
    */
+  /**
+   * Removes a document completely from the map: deletes the pinned entry
+   * and every faction→document edge referencing this UUID.
+   * @param {string} uuid
+   */
+  static async removeDocumentFromMap(uuid) {
+    const data = this.getAll();
+    delete data.pinnedDocuments[uuid];
+    for (const id of Object.keys(data.edges)) {
+      const e = data.edges[id];
+      if (e.type === "document" && e.documentUuid === uuid) {
+        delete data.edges[id];
+      }
+    }
+    await this._save(data);
+  }
+
   static async cleanupFaction(factionId) {
     const data = this.getAll();
     for (const id of Object.keys(data.edges)) {

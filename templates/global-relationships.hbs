@@ -28,6 +28,31 @@
       {{else}}
         <div class="global-rel-empty">No factions yet.</div>
       {{/each}}
+      {{!-- Documents section --}}
+      <div class="global-rel-section-header">
+        <span>Documents</span>
+        <button type="button" class="icon" data-action="addDocument" title="Add document to map">
+          <i class="fa-solid fa-plus"></i>
+        </button>
+      </div>
+      {{#if mapDocuments.length}}
+        {{#each mapDocuments}}
+          <div class="global-rel-doc-item{{#if isSelected}} selected{{/if}}"
+               data-uuid="{{uuid}}" title="{{documentName}}">
+            <i class="fa-solid {{icon}} fa-fw"></i>
+            <span class="global-rel-doc-name">{{documentName}}</span>
+            <button type="button" class="global-rel-doc-remove icon"
+                    data-action="removeDocument" data-uuid="{{uuid}}" title="Remove from map">
+              <i class="fa-solid fa-xmark"></i>
+            </button>
+          </div>
+        {{/each}}
+      {{else}}
+        <div class="global-rel-empty global-rel-doc-empty">
+          No documents. Click <i class="fa-solid fa-plus"></i> or drag a document onto the canvas.
+        </div>
+      {{/if}}
+
     </div>
 
     {{!-- Right Pane: SVG Canvas --}}
