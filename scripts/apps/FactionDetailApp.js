@@ -4,6 +4,15 @@ import { RelationshipStore } from "../data/RelationshipStore.js";
 import { MemberStore } from "../data/MemberStore.js";
 import { EventLogStore } from "../data/EventLogStore.js";
 import { tryAddSessionNote } from "../utils/SandboxIntegration.js";
+import {
+  getConnectionTypes,
+  connectionTypePickerHTML,
+  connectionDirectionPickerHTML,
+  readSelectedDirection,
+  readSelectedType,
+  bindPanelDismiss,
+  positionPanelBesideApp
+} from "../utils/ConnectionPanelHelpers.js";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -155,7 +164,7 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
     })();
     context.factionStats = context.selectedFaction?.stats ?? {};
     context.journalContent    = await this.#getJournalContent();
-    context.connectionTypes   = this.#getConnectionTypes();
+    context.connectionTypes   = getConnectionTypes();
     context.relationshipItems = this.#selectedFactionId
       ? this.#buildRelationshipItems()
       : [];
@@ -210,13 +219,6 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
     await tryAddSessionNote(text, factionName, settingKey);
   }
 
-  #getConnectionTypes() {
-    try {
-      const raw = game.settings.get("ddf-faction-manager", "connectionTypes");
-      return typeof raw === "string" ? JSON.parse(raw) : (raw ?? []);
-    } catch { return []; }
-  }
-
   // ─── Relationship Items (read-only list for Overview pane) ────────────────────
 
   #buildRelationshipItems() {
@@ -262,7 +264,7 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
       }));
 
     // Stored relationship edges
-    const connectionTypes = this.#getConnectionTypes();
+    const connectionTypes = getConnectionTypes();
 
     const storedItems = storedEdges
       .map(edge => {
@@ -333,7 +335,7 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
         const typeId = e.target.value || null;
         await RelationshipStore.updateEdgeConnectionType(edgeId, typeId);
         const typeName = typeId
-          ? (this.#getConnectionTypes().find(t => t.id === typeId)?.name ?? typeId)
+          ? (getConnectionTypes().find(t => t.id === typeId)?.name ?? typeId)
           : "none";
         await this.#logEvent("connection", `Connection type changed to: ${typeName}`, "scmConnectionTypeChanged");
         this.render({ parts: ["content"] });
@@ -885,25 +887,10 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
     if (!this.#selectedFactionId) return;
 
     const fromFactionId = this.#selectedFactionId;
-    const appRect  = this.element.getBoundingClientRect();
-    const btnRect  = target.getBoundingClientRect();
 
     const panel = document.createElement("div");
     panel.className = "mm-search-panel ddf-conn-panel";
-
-    // Hang the panel to the right of the faction window.
-    // Fall back to left side if the window is too close to the screen edge.
-    const PANEL_W = 260;
-    const GAP     = 8;
-    const fitsRight = appRect.right + GAP + PANEL_W <= window.innerWidth;
-    if (fitsRight) {
-      panel.style.left = `${appRect.right + GAP}px`;
-    } else {
-      panel.style.right = `${window.innerWidth - appRect.left + GAP}px`;
-    }
-    // Vertically align with the button that opened it
-    const topMax = window.innerHeight - 40; // keep at least some of the panel visible
-    panel.style.top = `${Math.min(btnRect.top, topMax)}px`;
+    positionPanelBesideApp(panel, this.element, target, 260);
 
     panel.innerHTML = `
       <div class="mm-panel-title">Add Connection</div>
@@ -922,7 +909,7 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
 
     // Attach to body so it can appear outside the faction window bounds
     document.body.appendChild(panel);
-    this.#bindConnPanelDismiss(panel);
+    bindPanelDismiss(panel);
   }
 
   #showConnFactionSearch(panel, fromFactionId) {
@@ -953,8 +940,8 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
           : "<div class='mm-search-empty'>No factions available</div>"
         }
       </div>
-      ${this.#connTypePickerHTML()}
-      ${this.#connDirectionPickerHTML()}
+      ${connectionTypePickerHTML()}
+      ${connectionDirectionPickerHTML()}
       <div class="mm-panel-actions"><button class="mm-btn-cancel">Cancel</button></div>
     `;
 
@@ -972,15 +959,15 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
       const el = e.target.closest(".mm-search-result");
       if (!el) return;
       const toFactionId      = el.dataset.id;
-      const direction        = this.#connSelectedDirection(panel);
-      const connectionTypeId = this.#connSelectedType(panel);
+      const direction        = readSelectedDirection(panel);
+      const connectionTypeId = readSelectedType(panel);
       const opts             = { toFactionId };
       if (connectionTypeId) opts.connectionTypeId = connectionTypeId;
       await RelationshipStore.createEdge(fromFactionId, "faction", direction, opts);
       const fromName   = FactionStore.getAll()[fromFactionId]?.name ?? "Faction";
       const toName     = FactionStore.getAll()[toFactionId]?.name   ?? "Faction";
       const typeName   = connectionTypeId
-        ? (this.#getConnectionTypes().find(t => t.id === connectionTypeId)?.name ?? "")
+        ? (getConnectionTypes().find(t => t.id === connectionTypeId)?.name ?? "")
         : "";
       const dirArrow   = direction === "two-way" ? "↔" : "→";
       await this.#logEvent("connection",
@@ -1020,8 +1007,8 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
           : "<div class='mm-search-empty'>No documents found</div>"
         }
       </div>
-      ${this.#connTypePickerHTML()}
-      ${this.#connDirectionPickerHTML()}
+      ${connectionTypePickerHTML()}
+      ${connectionDirectionPickerHTML()}
       <div class="mm-panel-actions"><button class="mm-btn-cancel">Cancel</button></div>
     `;
 
@@ -1038,13 +1025,13 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
     results.addEventListener("click", async (e) => {
       const el = e.target.closest(".mm-search-result");
       if (!el) return;
-      const direction        = this.#connSelectedDirection(panel);
-      const connectionTypeId = this.#connSelectedType(panel);
+      const direction        = readSelectedDirection(panel);
+      const connectionTypeId = readSelectedType(panel);
       const opts = { documentUuid: el.dataset.uuid, documentType: el.dataset.type, documentName: el.dataset.name };
       if (connectionTypeId) opts.connectionTypeId = connectionTypeId;
       await RelationshipStore.createEdge(fromFactionId, "document", direction, opts);
       const typeName = connectionTypeId
-        ? (this.#getConnectionTypes().find(t => t.id === connectionTypeId)?.name ?? "")
+        ? (getConnectionTypes().find(t => t.id === connectionTypeId)?.name ?? "")
         : "";
       const dirArrow = direction === "two-way" ? "↔" : "→";
       await this.#logEvent("connection",
@@ -1058,50 +1045,8 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
     input.focus();
   }
 
-  #connTypePickerHTML() {
-    const types = this.#getConnectionTypes();
-    const opts  = types.map(t =>
-      `<option value="${t.id}">${foundry.utils.escapeHTML(t.name)}</option>`
-    ).join("");
-    return `
-      <div class="mm-type-row">
-        <span>Type:</span>
-        <select class="mm-type-select" name="mm_type">
-          <option value="">— None —</option>
-          ${opts}
-        </select>
-      </div>`;
-  }
-
-  #connDirectionPickerHTML() {
-    return `
-      <div class="mm-direction-row">
-        <span>Direction:</span>
-        <label><input type="radio" name="mm_dir" value="one-way" checked> One-way</label>
-        <label><input type="radio" name="mm_dir" value="two-way"> Two-way</label>
-      </div>`;
-  }
-
-  #connSelectedDirection(panel) {
-    return panel.querySelector('input[name="mm_dir"]:checked')?.value ?? "one-way";
-  }
-
-  #connSelectedType(panel) {
-    return panel.querySelector('select[name="mm_type"]')?.value || null;
-  }
-
   #closeConnPanel() {
     document.querySelectorAll(".ddf-conn-panel").forEach(el => el.remove());
-  }
-
-  #bindConnPanelDismiss(panel) {
-    const handler = (e) => {
-      if (!panel.contains(e.target)) {
-        panel.remove();
-        document.removeEventListener("mousedown", handler, true);
-      }
-    };
-    setTimeout(() => document.addEventListener("mousedown", handler, true), 50);
   }
 
   // ─── Member Actions ───────────────────────────────────────────────────────────
@@ -1115,23 +1060,12 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
     document.querySelectorAll(".ddf-member-add-panel").forEach(el => el.remove());
 
     const factionId = this.#selectedFactionId;
-    const appRect   = this.element.getBoundingClientRect();
-    const btnRect   = triggerEl.getBoundingClientRect();
-    const PANEL_W   = 280;
-    const GAP       = 8;
 
     const panel = document.createElement("div");
     panel.className  = "mm-search-panel ddf-member-add-panel";
     panel.style.position = "fixed";
     panel.style.zIndex   = "10000";
-
-    const fitsRight = appRect.right + GAP + PANEL_W <= window.innerWidth;
-    if (fitsRight) {
-      panel.style.left = `${appRect.right + GAP}px`;
-    } else {
-      panel.style.right = `${window.innerWidth - appRect.left + GAP}px`;
-    }
-    panel.style.top = `${Math.min(btnRect.top, window.innerHeight - 40)}px`;
+    positionPanelBesideApp(panel, this.element, triggerEl, 280);
 
     // Actors already linked in this faction — skip showing them as selectable
     const linkedUuids = new Set(
@@ -1412,23 +1346,11 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
     // Dismiss any existing panel
     document.querySelectorAll(".ddf-actor-search-panel").forEach(el => el.remove());
 
-    const appRect = this.element.getBoundingClientRect();
-    const btnRect = triggerEl.getBoundingClientRect();
-    const PANEL_W = 260;
-    const GAP     = 8;
-
     const panel = document.createElement("div");
     panel.className = "mm-search-panel ddf-actor-search-panel";
     panel.style.position = "fixed";
     panel.style.zIndex   = "10000";
-
-    const fitsRight = appRect.right + GAP + PANEL_W <= window.innerWidth;
-    if (fitsRight) {
-      panel.style.left = `${appRect.right + GAP}px`;
-    } else {
-      panel.style.right = `${window.innerWidth - appRect.left + GAP}px`;
-    }
-    panel.style.top = `${Math.min(btnRect.top, window.innerHeight - 40)}px`;
+    positionPanelBesideApp(panel, this.element, triggerEl, 260);
 
     const actors = [...game.actors].sort((a, b) => a.name.localeCompare(b.name));
     panel.innerHTML = `

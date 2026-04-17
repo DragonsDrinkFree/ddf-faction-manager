@@ -43,7 +43,20 @@ export class RelationshipStore {
     if (!data.edges)           data.edges           = {};
     if (!data.positions)       data.positions        = {};
     if (!data.pinnedDocuments) data.pinnedDocuments  = {};
+    if (!data.documentSizes)   data.documentSizes    = {};
     return data;
+  }
+
+  /** Returns the documentSizes map keyed by UUID. Values are "small"|"medium"|"large". */
+  static getDocumentSizes() {
+    return this.getAll().documentSizes;
+  }
+
+  /** Persist a document node size preference. */
+  static async setDocumentSize(uuid, size) {
+    const data = this.getAll();
+    data.documentSizes[uuid] = size;
+    await this._save(data);
   }
 
   /** Returns the pinnedDocuments map keyed by UUID. */
@@ -236,6 +249,8 @@ export class RelationshipStore {
     for (const id of Object.keys(data.edges)) {
       const e = data.edges[id];
       if (e.type === "document" && e.documentUuid === uuid) {
+        delete data.edges[id];
+      } else if (e.type === "doc-link" && (e.documentUuid === uuid || e.fromDocUuid === uuid)) {
         delete data.edges[id];
       }
     }

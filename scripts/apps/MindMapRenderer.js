@@ -18,6 +18,121 @@ const ORBIT_GAP        = 20;  // minimum gap between parent edge and sub-faction
 const MEMBER_NODE_R    = 26;  // radius of member orbit nodes
 const MEMBER_ORBIT_GAP = 15;  // gap between faction node edge and member ring
 
+/**
+ * Preset radii (px) for the Small / Medium / Large size buttons.
+ * Scene documents use larger defaults to fill their hexagon visually.
+ * All other document types use smaller defaults.
+ * Exported so the context-menu builder can highlight the active preset.
+ */
+export const DOC_SIZE_PRESETS = {
+  scene: { small: 90, medium: 180, large: 360 },
+  other: { small: 15, medium: 30,  large: 90  }
+};
+
+/**
+ * Canonical set of node.type string values used across the renderer.
+ * Also drives the CSS class name `mm-node-type-${node.type}` in styles.css —
+ * DO NOT rename a value without updating the matching selector.
+ */
+const NODE_TYPE = {
+  // Local-map node kinds
+  CENTRAL:        "central",        // center of the local map (POV faction)
+  SUBFACTION:     "subfaction",     // dashed-link sub-faction on local map
+  FACTION:        "faction",        // related faction on local map
+  DOCUMENT:       "document",       // generic document hexagon on local map
+  SIMPLE:         "simple",         // misc endpoint (not a known type)
+
+  // Global-map node kinds
+  POV:            "pov",            // currently-selected faction (global)
+  FACTION_GLOBAL: "faction-global", // non-POV faction on the global map
+  DOC_ACTOR:      "doc-actor",      // actor document on the global map
+  DOC_SCENE:      "doc-scene",      // scene document on the global map
+  DOC_JOURNAL:    "doc-journal",    // journal document on the global map
+  DOC_OTHER:      "doc-other",      // any other document kind
+  MEMBER_ACTOR:   "member-actor",   // member diamond with actor reference
+  MEMBER_OTHER:   "member-other",   // member diamond without actor reference
+};
+
+/**
+ * Node-key prefix conventions used by the global map.
+ * - `doc_<uuid>`     → free-floating document node
+ * - `member_<id>`    → faction member diamond
+ * - otherwise        → plain faction id (top-level or sub-faction)
+ *
+ * Exported helpers keep this convention in one place so callers don't hand-slice.
+ */
+export const NODE_KEY = {
+  DOC_PREFIX:    "doc_",
+  MEMBER_PREFIX: "member_",
+  forDocument(uuid)   { return `${NODE_KEY.DOC_PREFIX}${uuid}`; },
+  forMember(memberId) { return `${NODE_KEY.MEMBER_PREFIX}${memberId}`; },
+};
+
+/**
+ * Parses a node-key into its logical kind and the embedded identifier.
+ * Returns `{ kind: "document", uuid }`, `{ kind: "member", memberId }`,
+ * or `{ kind: "faction", factionId }`. Safe on null/undefined input.
+ */
+export function parseNodeKey(nodeKey) {
+  if (!nodeKey) return { kind: "none" };
+  if (nodeKey.startsWith(NODE_KEY.DOC_PREFIX)) {
+    return { kind: "document", uuid: nodeKey.slice(NODE_KEY.DOC_PREFIX.length) };
+  }
+  if (nodeKey.startsWith(NODE_KEY.MEMBER_PREFIX)) {
+    return { kind: "member", memberId: nodeKey.slice(NODE_KEY.MEMBER_PREFIX.length) };
+  }
+  return { kind: "faction", factionId: nodeKey };
+}
+
+/** Default display radius by node.type. Used when node.radius is not set. */
+const NODE_TYPE_RADIUS = {
+  [NODE_TYPE.CENTRAL]:        R.central,
+  [NODE_TYPE.SUBFACTION]:     R.subfaction,
+  [NODE_TYPE.FACTION]:        R.faction,
+  [NODE_TYPE.POV]:            R.pov,
+  [NODE_TYPE.FACTION_GLOBAL]: R.factionGlobal,
+  [NODE_TYPE.DOCUMENT]:       Math.max(R.document.rx, R.document.ry),
+  [NODE_TYPE.DOC_ACTOR]:      R.docGlobal,
+  [NODE_TYPE.DOC_SCENE]:      R.docGlobal,
+  [NODE_TYPE.DOC_JOURNAL]:    R.docGlobal,
+  [NODE_TYPE.DOC_OTHER]:      R.docGlobal,
+  [NODE_TYPE.MEMBER_ACTOR]:   MEMBER_NODE_R,
+  [NODE_TYPE.MEMBER_OTHER]:   MEMBER_NODE_R,
+  [NODE_TYPE.SIMPLE]:         Math.max(R.simple.rx, R.simple.ry),
+};
+
+/**
+ * Force-directed layout constants.
+ * Tuned for a map of ~5–30 nodes; adjust repulsion/springRest for denser graphs.
+ */
+const FORCE = {
+  // ── Base strengths (level 3 = default; all scale with forceLevel) ─────────
+  repulsion:         12000, // cluster-vs-cluster base repulsion
+  springK:           0.04,  // rubber-band spring constant for edges
+  springRest:        180,   // edge rest length in px
+
+  // ── Orbit constraints ──────────────────────────────────────────────────────
+  orbitSpringK:      0.35,  // radial spring for sub-faction orbits (stiff — keep tight)
+  memberOrbitK:      0.25,  // radial spring for member orbits (stiff — keep tight)
+
+  // ── Sibling repulsion fractions of base repulsion ─────────────────────────
+  siblingSubFacMult: 0.35,  // sub-faction siblings repel each other (mid-strength)
+  siblingMemberMult: 0.12,  // member siblings repel each other (gentle)
+
+  // ── Document node fraction ─────────────────────────────────────────────────
+  docRepulsionMult:  0.30,  // docs repel other nodes at this fraction
+
+  // ── Simulation meta ────────────────────────────────────────────────────────
+  centerK:           0.0002, // gentle pull toward world origin (keep nodes visible)
+  alphaDecay:        0.0228,
+  alphaMin:          0.001,
+  velocityDecay:     0.4,
+  maxVelocity:       12,
+  maxDist:           1400,
+  nodePadding:       22,    // guaranteed gap beyond summed node radii
+  collisionSpring:   3.0,   // hard-push when nodes overlap
+};
+
 /** Zoom limits */
 const MIN_SCALE = 0.15;
 const MAX_SCALE = 5;
@@ -55,6 +170,16 @@ export class MindMapRenderer {
 
   // background pan state
   #pan = null;
+
+  // ─── Force-directed layout state ──────────────────────────────────────────
+  #forceAlpha          = 0;
+  #forceVelocities     = new Map();  // nodeKey → { vx, vy }
+  #forceRafId          = null;
+  #forceMemberRadii    = new Map();  // nodeKey → orbit radius (members)
+  #forceSubFacRadii    = new Map();  // nodeKey → orbit radius (sub-factions)
+  #nodeClusterKey      = new Map();  // nodeKey → top-level faction key for cluster grouping
+  #forceActive         = false;
+  #forceLevel          = 3;
 
   // bound listener refs for cleanup
   #boundMouseMove;
@@ -98,6 +223,10 @@ export class MindMapRenderer {
   }
 
   destroy() {
+    if (this.#forceRafId) {
+      cancelAnimationFrame(this.#forceRafId);
+      this.#forceRafId = null;
+    }
     if (this.#svg) {
       this.#svg.removeEventListener("wheel",     this.#boundOnWheel);
       this.#svg.removeEventListener("mousedown", this.#boundOnBgMousedown);
@@ -117,6 +246,56 @@ export class MindMapRenderer {
     this._orbitRadii         = null;
     this._memberOrbitRingEls = null;
     this._memberSpokeEls     = null;
+    this.#forceSubFacRadii.clear();
+    this.#nodeClusterKey.clear();
+  }
+
+  // ─── Force-directed layout API ────────────────────────────────────────────────
+
+  /**
+   * Arm the simulation and start from full energy.
+   * Stays "armed" after cooldown so the button remains active.
+   * @param {number} [level=3]  Spacing intensity 1–5
+   */
+  startForceLayout(level = 3) {
+    this.#forceLevel  = Math.max(1, Math.min(5, level));
+    this.#forceActive = true;
+    this.#forceAlpha  = 1;
+    this.#forceVelocities.clear();
+    if (this._globalNodeMap) {
+      for (const key of Object.keys(this._globalNodeMap)) {
+        this.#forceVelocities.set(key, { vx: 0, vy: 0 });
+      }
+    }
+    if (this.#forceRafId) cancelAnimationFrame(this.#forceRafId);
+    const tick = () => {
+      this.#forceTick();
+      if (this.#forceAlpha > FORCE.alphaMin) {
+        this.#forceRafId = requestAnimationFrame(tick);
+      } else {
+        // Simulation cooled — save positions and idle.
+        // Armed state (#forceActive) remains true; button stays gold.
+        this.#forceRafId = null;
+        this.#forceSaveAllPositions();
+      }
+    };
+    this.#forceRafId = requestAnimationFrame(tick);
+  }
+
+  /** Explicitly disarm the simulation and save positions. Called by the user toggling off. */
+  stopForceLayout() {
+    if (this.#forceRafId) {
+      cancelAnimationFrame(this.#forceRafId);
+      this.#forceRafId = null;
+    }
+    this.#forceActive = false;
+    this.#forceSaveAllPositions();
+    this.#config.onForceLayoutStop?.();
+  }
+
+  /** Returns true when the simulation is armed (running or idling between remounts). */
+  isForceLayoutActive() {
+    return this.#forceActive;
   }
 
   remount() {
@@ -305,6 +484,38 @@ export class MindMapRenderer {
     const nodes    = this.#buildGlobalNodes(cx, cy);
     const nodeMap  = Object.fromEntries(nodes.map(n => [n.key, n]));
 
+    // Populate orbit radii for the force simulation from actual node positions
+    this.#forceMemberRadii.clear();
+    this.#forceSubFacRadii.clear();
+    for (const node of nodes) {
+      if (!node.parentId) continue;
+      const parent = nodeMap[node.parentId];
+      if (!parent) continue;
+      const r = Math.sqrt((node.x - parent.x) ** 2 + (node.y - parent.y) ** 2);
+      if (node.isMember)      this.#forceMemberRadii.set(node.key, r);
+      else if (node.isSubFaction) this.#forceSubFacRadii.set(node.key, r);
+    }
+
+    // Cluster-key map: each node maps to the top-level faction it belongs to.
+    // Used so cluster-level repulsion can account for the full footprint of a system.
+    this.#nodeClusterKey.clear();
+    for (const node of nodes) {
+      if (!node.isSubFaction && !node.isMember && !node.isDocument) {
+        this.#nodeClusterKey.set(node.key, node.key);
+      }
+    }
+    // Propagate downward through the hierarchy (handles any depth)
+    let propagating = true;
+    while (propagating) {
+      propagating = false;
+      for (const node of nodes) {
+        if (node.parentId && !this.#nodeClusterKey.has(node.key)) {
+          const ck = this.#nodeClusterKey.get(node.parentId);
+          if (ck !== undefined) { this.#nodeClusterKey.set(node.key, ck); propagating = true; }
+        }
+      }
+    }
+
     // Build edge descriptors, then assign curve offsets based on actual positions
     const edgeDescs = this.#buildGlobalEdgeDescs();
     this.#assignEdgeCurveOffsets(edgeDescs, nodeMap);
@@ -416,17 +627,14 @@ export class MindMapRenderer {
     }
 
     // Wire drag + left-click (POV toggle) + right-click on each node.
-    // Member nodes get drag only. Faction and document nodes also get context menu.
     for (const { el, node } of Object.values(nodeEls)) {
       this.#wireNodeDrag(el, node, null, null, true);
 
-      if (!node.isMember) {
-        el.addEventListener("contextmenu", (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          this.#config.onNodeContextMenu(node.key, null, e.clientX, e.clientY);
-        });
-      }
+      el.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.#config.onNodeContextMenu(node.key, null, e.clientX, e.clientY);
+      });
     }
 
     // Store element maps for live drag updates
@@ -522,10 +730,19 @@ export class MindMapRenderer {
 
     // ── Pass 3: document nodes (only those that have at least one stored edge) ─
     const edgesMap = this.#config.edges;
+
+    // Build set of actor UUIDs already represented by member diamond nodes
+    // so we don't create a second doc node for the same actor.
+    const memberActorUuids = new Set();
+    for (const member of Object.values(this.#config.members ?? {})) {
+      if (member.actorUuid) memberActorUuids.add(member.actorUuid);
+    }
+
     const docMap   = new Map(); // uuid → { name, docType, factionIds[] }
     for (const edge of Object.values(edgesMap)) {
       if (edge.type !== "document" || !edge.documentUuid) continue;
       const uuid = edge.documentUuid;
+      if (memberActorUuids.has(uuid)) continue; // already a member diamond node
       if (!docMap.has(uuid)) {
         docMap.set(uuid, {
           name:      edge.documentName  ?? "Document",
@@ -539,13 +756,16 @@ export class MindMapRenderer {
     // Merge pinned documents — they appear even with no faction edges
     const pinnedDocs = this.#config.pinnedDocuments ?? {};
     for (const [uuid, pd] of Object.entries(pinnedDocs)) {
+      if (memberActorUuids.has(uuid)) continue; // already a member diamond node
       if (!docMap.has(uuid)) {
         docMap.set(uuid, { name: pd.documentName, docType: pd.documentType, factionIds: [] });
       }
     }
 
+    const docSizes = this.#config.documentSizes ?? {};
+
     docMap.forEach(({ name, docType, factionIds }, uuid) => {
-      const key        = `doc_${uuid}`;
+      const key        = NODE_KEY.forDocument(uuid);
       const isSelected = key === povFactionId;
       let pos = saved[key];
       if (!pos) {
@@ -563,7 +783,7 @@ export class MindMapRenderer {
       let docResolvedColor = null;
       if (isSelected) {
         docResolvedColor = "#FFD700";
-      } else if (povFactionId && !povFactionId.startsWith("doc_")) {
+      } else if (povFactionId && !povFactionId.startsWith(NODE_KEY.DOC_PREFIX)) {
         const connectionTypes = this.#config.connectionTypes ?? [];
         const connectingEdge = Object.values(edgesMap).find(e =>
           e.type === "document" && e.documentUuid === uuid && e.fromFactionId === povFactionId
@@ -576,14 +796,32 @@ export class MindMapRenderer {
         }
       }
 
+      const docType2NodeType = {
+        Actor:        "doc-actor",
+        Scene:        "doc-scene",
+        JournalEntry: "doc-journal"
+      };
+      const storedSize = docSizes[uuid];
+      const presetKey  = docType === "Scene" ? "scene" : "other";
+      const presets    = DOC_SIZE_PRESETS[presetKey];
+      let docRadius;
+      if (typeof storedSize === "number") {
+        docRadius = storedSize;
+      } else if (typeof storedSize === "string" && presets[storedSize] != null) {
+        // legacy string value → migrate to number on next save; use preset for now
+        docRadius = presets[storedSize];
+      } else {
+        docRadius = presets.medium;
+      }
+
       nodes.push({
         key,
         label:         name,
-        type:          docType === "Actor" ? "doc-actor" : "doc-other",
+        type:          docType2NodeType[docType] ?? "doc-other",
         x: pos.x, y: pos.y,
         edge: null, edgeStyle: null,
         resolvedColor: docResolvedColor,
-        radius:        R.docGlobal,
+        radius:        docRadius,
         isSubFaction:  false,
         isMember:      false,
         isDocument:    true,
@@ -608,7 +846,7 @@ export class MindMapRenderer {
       // Use saved distance of any sibling; otherwise compute inner orbit radius
       let orbitR = factionR + MEMBER_ORBIT_GAP + MEMBER_NODE_R;
       for (const m of members) {
-        const sp = saved[`member_${m.id}`];
+        const sp = saved[NODE_KEY.forMember(m.id)];
         if (sp) {
           orbitR = Math.sqrt((sp.x - parentPos.x) ** 2 + (sp.y - parentPos.y) ** 2);
           break;
@@ -616,7 +854,7 @@ export class MindMapRenderer {
       }
 
       members.forEach((member, i) => {
-        const key   = `member_${member.id}`;
+        const key   = NODE_KEY.forMember(member.id);
         const angle = (2 * Math.PI * i / Math.max(members.length, 1)) - Math.PI / 2;
         const pos   = saved[key] ?? {
           x: parentPos.x + orbitR * Math.cos(angle),
@@ -629,7 +867,7 @@ export class MindMapRenderer {
           type:         member.actorUuid ? "member-actor" : "member-other",
           x: pos.x, y: pos.y,
           edge: null, edgeStyle: null,
-          resolvedColor: null,
+          resolvedColor: key === povFactionId ? "#FFD700" : null,
           radius:       MEMBER_NODE_R,
           isSubFaction: false,
           isMember:     true,
@@ -655,12 +893,18 @@ export class MindMapRenderer {
         return Math.sqrt((sp.x - parentPos.x) ** 2 + (sp.y - parentPos.y) ** 2);
       }
     }
-    // Default: parent radius + gap + largest sub-faction radius
+    // Default: parent radius + gap + largest sub-faction radius,
+    // but also ensure enough circumference to fit all siblings without touching.
     const parentR = this.#computeNodeRadius(parentFaction);
     const maxSubR = siblings.length
       ? Math.max(...siblings.map(f => this.#computeNodeRadius(f)))
       : 20;
-    return parentR + ORBIT_GAP + maxSubR;
+    const baseR   = parentR + ORBIT_GAP + maxSubR;
+    // Minimum radius so N siblings spaced by (2*maxSubR + ORBIT_GAP) don't overlap
+    const packR   = siblings.length > 1
+      ? (siblings.length * (2 * maxSubR + ORBIT_GAP)) / (2 * Math.PI)
+      : 0;
+    return Math.max(baseR, packR);
   }
 
   /**
@@ -724,8 +968,8 @@ export class MindMapRenderer {
     const allEdges = Object.values(edgesMap);
 
     // POV is a document node — highlight factions that have an edge to that document
-    if (povFactionId.startsWith("doc_")) {
-      const docUuid = povFactionId.slice(4);
+    if (povFactionId.startsWith(NODE_KEY.DOC_PREFIX)) {
+      const docUuid = povFactionId.slice(NODE_KEY.DOC_PREFIX.length);
       const connectingEdge = allEdges.find(e =>
         e.type === "document" && e.documentUuid === docUuid && e.fromFactionId === factionId
       );
@@ -786,15 +1030,38 @@ export class MindMapRenderer {
       });
     }
 
-    // Document edges — line from faction node to document node.
+    // Build lookup: actorUuid → memberId so edges targeting member actors route to diamond nodes.
+    const membersByActorUuid = new Map();
+    for (const [id, member] of Object.entries(this.#config.members ?? {})) {
+      if (member.actorUuid) membersByActorUuid.set(member.actorUuid, id);
+    }
+
+    // Document edges — line from faction node to document/member node.
     for (const edge of Object.values(edgesMap)) {
       if (edge.type !== "document" || !edge.documentUuid) continue;
       const typeColor = edge.connectionTypeId
         ? connectionTypes.find(t => t.id === edge.connectionTypeId)?.color ?? null
         : null;
+      const memberId = membersByActorUuid.get(edge.documentUuid);
       descs.push({
         fromKey: edge.fromFactionId,
-        toKey:   `doc_${edge.documentUuid}`,
+        toKey:   memberId ? NODE_KEY.forMember(memberId) : NODE_KEY.forDocument(edge.documentUuid),
+        style:   edge.direction === "two-way" ? "two-way" : "one-way",
+        color:   edge.color ?? typeColor ?? null
+      });
+    }
+
+    // Doc-to-doc link edges — both endpoints may be doc_ nodes or member diamonds.
+    for (const edge of Object.values(edgesMap)) {
+      if (edge.type !== "doc-link" || !edge.fromDocUuid || !edge.documentUuid) continue;
+      const typeColor = edge.connectionTypeId
+        ? connectionTypes.find(t => t.id === edge.connectionTypeId)?.color ?? null
+        : null;
+      const fromMemberId = membersByActorUuid.get(edge.fromDocUuid);
+      const toMemberId   = membersByActorUuid.get(edge.documentUuid);
+      descs.push({
+        fromKey: fromMemberId ? NODE_KEY.forMember(fromMemberId) : NODE_KEY.forDocument(edge.fromDocUuid),
+        toKey:   toMemberId   ? NODE_KEY.forMember(toMemberId)   : NODE_KEY.forDocument(edge.documentUuid),
         style:   edge.direction === "two-way" ? "two-way" : "one-way",
         color:   edge.color ?? typeColor ?? null
       });
@@ -932,6 +1199,405 @@ export class MindMapRenderer {
     return `M${x1},${y1} C${cp1x},${cp1y} ${cp2x},${cp2y} ${x2},${y2}`;
   }
 
+  // ─── Force Simulation ─────────────────────────────────────────────────────────
+
+  /**
+   * Hierarchical force tick.
+   *
+   * Physics layers (strength decreasing at each level):
+   *   1. Cluster-vs-cluster — whole faction solar systems repel as bounding circles
+   *   2. Sub-faction siblings  — repel each other within their parent orbit (35%)
+   *   3. Member siblings       — repel each other within their parent orbit (12%)
+   *   4. Orbit springs         — sub-factions / members pulled back to orbit radius
+   *   5. Edge rubber bands     — connections pull factions together
+   *   6. Document repulsion    — docs avoid all other nodes (30%)
+   *   7. Hard collision        — any overlapping pair gets an extra push
+   *   8. Centering             — gentle pull toward world origin
+   *
+   * All forces are divided by node mass (∝ radius) so large nodes resist more.
+   */
+  #forceTick() {
+    const ctx = this.#buildForceContext();
+    if (!ctx) return;
+
+    this.#forceClusterRepulsion(ctx);
+    this.#forceSiblingRepulsion(ctx);
+    this.#forceOrbitSprings(ctx);
+    this.#forceSnapToOrbits(ctx);
+    this.#forceEdgeSprings(ctx);
+    this.#forceDocumentRepulsion(ctx);
+    this.#forceCentering(ctx);
+    this.#forceIntegrate(ctx);
+
+    this.#forceAlpha *= (1 - FORCE.alphaDecay);
+    this.#redrawAllNodePositions();
+  }
+
+  /**
+   * Builds the per-tick simulation context — scaled force strengths, node lists,
+   * and grouped lookups that every phase reuses. Returns null if the global map
+   * hasn't been mounted yet.
+   */
+  #buildForceContext() {
+    const nodeMap = this._globalNodeMap;
+    if (!nodeMap) return null;
+
+    const nodes    = Object.values(nodeMap);
+    const vel      = this.#forceVelocities;
+    const alpha    = this.#forceAlpha;
+    const levelExp = this.#forceLevel - 3;
+
+    // Ensure every node has a velocity slot
+    for (const node of nodes) {
+      if (!vel.has(node.key)) vel.set(node.key, { vx: 0, vy: 0 });
+    }
+
+    const topNodes = nodes.filter(n => !n.isSubFaction && !n.isMember && !n.isDocument);
+
+    // Group children by parent once per tick (used by sibling repulsion)
+    const siblingsByParent = new Map();
+    for (const node of nodes) {
+      if (!node.parentId || node.isDocument) continue;
+      if (!siblingsByParent.has(node.parentId)) siblingsByParent.set(node.parentId, []);
+      siblingsByParent.get(node.parentId).push(node);
+    }
+
+    return {
+      nodeMap, nodes, vel, alpha, topNodes, siblingsByParent,
+      levelMult:  Math.pow(1.4, levelExp),
+      repulsion:  FORCE.repulsion  * Math.pow(2,   levelExp),
+      springRest: FORCE.springRest * Math.pow(1.4, levelExp),
+    };
+  }
+
+  /** Node mass (∝ radius) — larger nodes resist force more. */
+  #forceMass(node) {
+    return Math.max(1, this.#nodeRadius(node) / 18);
+  }
+
+  /**
+   * Applies symmetric repulsion + hard-collision push between two nodes.
+   * `mult` scales the base repulsion (e.g. sibling/doc passes use fractions).
+   */
+  #forceRepel(a, b, mult, ctx) {
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const d2 = dx * dx + dy * dy;
+    if (d2 > FORCE.maxDist * FORCE.maxDist) return;
+    const minDist  = this.#nodeRadius(a) + this.#nodeRadius(b) + FORCE.nodePadding;
+    const effectD2 = Math.max(d2, minDist * minDist);
+    const force    = (ctx.repulsion * mult * ctx.alpha) / effectD2;
+    const dist     = Math.sqrt(d2) || 1;
+    const ux = dx / dist, uy = dy / dist;
+    const va = ctx.vel.get(a.key), vb = ctx.vel.get(b.key);
+    const ma = this.#forceMass(a), mb = this.#forceMass(b);
+    if (va) { va.vx -= ux * force / ma; va.vy -= uy * force / ma; }
+    if (vb) { vb.vx += ux * force / mb; vb.vy += uy * force / mb; }
+    if (dist < minDist) {
+      const cf = (minDist - dist) * FORCE.collisionSpring * mult;
+      if (va) { va.vx -= ux * cf / ma; va.vy -= uy * cf / ma; }
+      if (vb) { vb.vx += ux * cf / mb; vb.vy += uy * cf / mb; }
+    }
+  }
+
+  /**
+   * ── Phase 1 ─ Cluster-vs-cluster repulsion ────────────────────────────────
+   * Each top-level faction's cluster (faction + sub-factions + members) is
+   * repelled from every other cluster as a rigid body. The velocity delta is
+   * applied uniformly to every node in the cluster so the whole "solar system"
+   * translates together.
+   */
+  #forceClusterRepulsion(ctx) {
+    const { nodeMap, nodes, vel, alpha, topNodes, levelMult, repulsion } = ctx;
+
+    // Compute cluster footprint (radius of farthest descendant) and membership
+    const clusterRadius  = new Map();
+    const clusterMembers = new Map();
+    for (const node of nodes) {
+      const ck = this.#nodeClusterKey.get(node.key);
+      if (!ck) continue;
+      const top = nodeMap[ck];
+      if (!top) continue;
+      const d = Math.sqrt((node.x - top.x) ** 2 + (node.y - top.y) ** 2) + this.#nodeRadius(node);
+      if (!clusterRadius.has(ck) || d > clusterRadius.get(ck)) clusterRadius.set(ck, d);
+      if (!clusterMembers.has(ck)) clusterMembers.set(ck, []);
+      clusterMembers.get(ck).push(node);
+    }
+
+    for (let i = 0; i < topNodes.length; i++) {
+      for (let j = i + 1; j < topNodes.length; j++) {
+        const a = topNodes[i], b = topNodes[j];
+        const rA = (clusterRadius.get(a.key) ?? this.#nodeRadius(a)) * levelMult;
+        const rB = (clusterRadius.get(b.key) ?? this.#nodeRadius(b)) * levelMult;
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 > FORCE.maxDist * FORCE.maxDist) continue;
+        const minDist  = rA + rB + FORCE.nodePadding;
+        const effectD2 = Math.max(d2, minDist * minDist);
+        const dist     = Math.sqrt(d2) || 1;
+        const ux = dx / dist, uy = dy / dist;
+        const ma = this.#forceMass(a), mb = this.#forceMass(b);
+        const baseForce = (repulsion * alpha) / effectD2;
+        const dvAx = -ux * baseForce / ma, dvAy = -uy * baseForce / ma;
+        const dvBx =  ux * baseForce / mb, dvBy =  uy * baseForce / mb;
+
+        let cfAx = 0, cfAy = 0, cfBx = 0, cfBy = 0;
+        if (dist < minDist) {
+          const cf = (minDist - dist) * FORCE.collisionSpring;
+          cfAx = -ux * cf / ma; cfAy = -uy * cf / ma;
+          cfBx =  ux * cf / mb; cfBy =  uy * cf / mb;
+        }
+
+        for (const m of clusterMembers.get(a.key) ?? []) {
+          const v = vel.get(m.key);
+          if (v) { v.vx += dvAx + cfAx; v.vy += dvAy + cfAy; }
+        }
+        for (const m of clusterMembers.get(b.key) ?? []) {
+          const v = vel.get(m.key);
+          if (v) { v.vx += dvBx + cfBx; v.vy += dvBy + cfBy; }
+        }
+      }
+    }
+  }
+
+  /**
+   * ── Phase 2 ─ Sibling repulsion within orbits ─────────────────────────────
+   * Sub-factions repel sibling sub-factions; members repel sibling members.
+   * Combined with the orbit spring, this balances children angularly around
+   * their parent.
+   */
+  #forceSiblingRepulsion(ctx) {
+    for (const siblings of ctx.siblingsByParent.values()) {
+      const mult = siblings[0]?.isMember ? FORCE.siblingMemberMult : FORCE.siblingSubFacMult;
+      for (let i = 0; i < siblings.length; i++) {
+        for (let j = i + 1; j < siblings.length; j++) {
+          this.#forceRepel(siblings[i], siblings[j], mult, ctx);
+        }
+      }
+    }
+  }
+
+  /**
+   * ── Phase 3 ─ Orbit radial springs ────────────────────────────────────────
+   * Pulls sub-factions and members toward their fixed orbit radius from their
+   * parent. Radius is a hard parent-child constraint and does NOT scale with
+   * the spacing level — only cluster separation does.
+   */
+  #forceOrbitSprings(ctx) {
+    this.#applyOrbitSpring(ctx, this.#forceSubFacRadii, FORCE.orbitSpringK);
+    this.#applyOrbitSpring(ctx, this.#forceMemberRadii, FORCE.memberOrbitK);
+  }
+
+  #applyOrbitSpring(ctx, radiiMap, springK) {
+    const { nodeMap, vel, alpha } = ctx;
+    for (const [key, targetR] of radiiMap.entries()) {
+      const node = nodeMap[key];   if (!node) continue;
+      const parent = nodeMap[node.parentId]; if (!parent) continue;
+      const dx = node.x - parent.x, dy = node.y - parent.y;
+      const dist  = Math.sqrt(dx * dx + dy * dy) || 1;
+      const force = springK * (dist - targetR) * alpha;
+      const ux = dx / dist, uy = dy / dist;
+      const vp = vel.get(node.parentId), vm = vel.get(key);
+      const mp = this.#forceMass(parent), mn = this.#forceMass(node);
+      if (vp) { vp.vx += ux * force / mp; vp.vy += uy * force / mp; }
+      if (vm) { vm.vx -= ux * force / mn; vm.vy -= uy * force / mn; }
+    }
+  }
+
+  /**
+   * ── Phase 4 ─ Hard orbit clamp ────────────────────────────────────────────
+   * Teleports any child node that has drifted more than 2.5× its orbit radius
+   * back onto the ring. Prevents compounding drift from stale saved positions.
+   */
+  #forceSnapToOrbits(ctx) {
+    this.#applyOrbitSnap(ctx, this.#forceSubFacRadii);
+    this.#applyOrbitSnap(ctx, this.#forceMemberRadii);
+  }
+
+  #applyOrbitSnap(ctx, radiiMap) {
+    const { nodeMap, vel } = ctx;
+    for (const [key, targetR] of radiiMap.entries()) {
+      const node = nodeMap[key];   if (!node) continue;
+      const parent = nodeMap[node.parentId]; if (!parent) continue;
+      const dx = node.x - parent.x, dy = node.y - parent.y;
+      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+      if (dist > targetR * 2.5) {
+        const ux = dx / dist, uy = dy / dist;
+        node.x = parent.x + ux * targetR;
+        node.y = parent.y + uy * targetR;
+        const v = vel.get(key);
+        if (v) { v.vx = 0; v.vy = 0; }
+      }
+    }
+  }
+
+  /**
+   * ── Phase 5 ─ Edge rubber-band springs ────────────────────────────────────
+   * Every relationship edge pulls its endpoints toward `springRest` distance.
+   */
+  #forceEdgeSprings(ctx) {
+    if (!this._globalEdgeEls) return;
+    const { nodeMap, vel, alpha, springRest } = ctx;
+    for (const { fromKey, toKey } of Object.values(this._globalEdgeEls)) {
+      const a = nodeMap[fromKey], b = nodeMap[toKey];
+      if (!a || !b) continue;
+      const dx   = b.x - a.x, dy = b.y - a.y;
+      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+      const force = FORCE.springK * (dist - springRest) * alpha;
+      const ux = dx / dist, uy = dy / dist;
+      const va = vel.get(fromKey), vb = vel.get(toKey);
+      const ma = this.#forceMass(a), mb = this.#forceMass(b);
+      if (va) { va.vx += ux * force / ma; va.vy += uy * force / ma; }
+      if (vb) { vb.vx -= ux * force / mb; vb.vy -= uy * force / mb; }
+    }
+  }
+
+  /**
+   * ── Phase 6 ─ Document repulsion ──────────────────────────────────────────
+   * Document nodes gently push away from all other nodes — edges handle the
+   * primary placement, this just prevents overlap.
+   */
+  #forceDocumentRepulsion(ctx) {
+    for (const doc of ctx.nodes) {
+      if (!doc.isDocument) continue;
+      for (const other of ctx.nodes) {
+        if (other === doc) continue;
+        this.#forceRepel(doc, other, FORCE.docRepulsionMult, ctx);
+      }
+    }
+  }
+
+  /**
+   * ── Phase 7 ─ Centering pull (top-level nodes only) ───────────────────────
+   * Child nodes are already anchored by orbit springs; centering them directly
+   * would fight that constraint. Only the top-level factions get nudged home.
+   */
+  #forceCentering(ctx) {
+    for (const node of ctx.topNodes) {
+      const v = ctx.vel.get(node.key);
+      if (!v) continue;
+      const m = this.#forceMass(node);
+      v.vx -= (node.x * FORCE.centerK * ctx.alpha) / m;
+      v.vy -= (node.y * FORCE.centerK * ctx.alpha) / m;
+    }
+  }
+
+  /**
+   * ── Phase 8 ─ Integrate + cool ────────────────────────────────────────────
+   * Apply velocity decay, clamp to max speed, and advance node positions.
+   */
+  #forceIntegrate(ctx) {
+    for (const node of ctx.nodes) {
+      const v = ctx.vel.get(node.key);
+      if (!v) continue;
+      v.vx *= FORCE.velocityDecay;
+      v.vy *= FORCE.velocityDecay;
+      const speed = Math.sqrt(v.vx * v.vx + v.vy * v.vy);
+      if (speed > FORCE.maxVelocity) {
+        v.vx = (v.vx / speed) * FORCE.maxVelocity;
+        v.vy = (v.vy / speed) * FORCE.maxVelocity;
+      }
+      node.x += v.vx;
+      node.y += v.vy;
+    }
+  }
+
+  /** Persist every node's current position after the simulation stops. */
+  #forceSaveAllPositions() {
+    const nodeMap = this._globalNodeMap;
+    if (!nodeMap) return;
+    for (const node of Object.values(nodeMap)) {
+      this.#config.onPositionSave?.(node.key, node.x, node.y);
+    }
+  }
+
+  /** Update all node transforms plus every edge/spoke/ring in one pass. */
+  #redrawAllNodePositions() {
+    if (!this._globalNodeMap) return;
+    for (const { el, node } of Object.values(this._globalNodeEls ?? {})) {
+      el.setAttribute("transform", `translate(${node.x},${node.y})`);
+    }
+    this.#redrawEdgesAndRings(null);
+  }
+
+  /**
+   * Core redraw routine for edges, spoke lines, and orbit rings.
+   * If `filterKey` is non-null, only geometry touching that node is updated
+   * (used during drag to keep the DOM writes cheap). If null, everything is
+   * updated (used by the force simulation tick).
+   */
+  #redrawEdgesAndRings(filterKey) {
+    const nodeMap = this._globalNodeMap;
+    if (!nodeMap) return;
+
+    // Updates a straight <line> (or curved <path> if it carries a curveOffset)
+    const updateEdgeLine = (line, fn, tn, curveOffset) => {
+      const { x1, y1, x2, y2 } = this.#edgeEndpoints(fn, tn);
+      if (curveOffset) {
+        line.setAttribute("d", this.#curvedPath(x1, y1, x2, y2, curveOffset));
+      } else {
+        line.setAttribute("x1", x1); line.setAttribute("y1", y1);
+        line.setAttribute("x2", x2); line.setAttribute("y2", y2);
+      }
+    };
+
+    // Moves an orbit-ring <circle> to a new parent center
+    const updateRingCenter = (ring, parentKey) => {
+      const pn = nodeMap[parentKey];
+      if (pn) { ring.setAttribute("cx", pn.x); ring.setAttribute("cy", pn.y); }
+    };
+
+    // ── Relationship edges ───────────────────────────────────────────────────
+    if (this._globalEdgeEls) {
+      for (const { line, fromKey, toKey, curveOffset } of Object.values(this._globalEdgeEls)) {
+        if (filterKey != null && fromKey !== filterKey && toKey !== filterKey) continue;
+        const fn = nodeMap[fromKey], tn = nodeMap[toKey];
+        if (!fn || !tn) continue;
+        updateEdgeLine(line, fn, tn, curveOffset);
+      }
+    }
+
+    // ── Sub-faction spoke lines (parent ↔ sub-faction) ───────────────────────
+    if (this._spokeLinkEls) {
+      for (const { line, parentKey, subKey } of Object.values(this._spokeLinkEls)) {
+        if (filterKey != null && parentKey !== filterKey && subKey !== filterKey) continue;
+        const pn = nodeMap[parentKey], sn = nodeMap[subKey];
+        if (!pn || !sn) continue;
+        updateEdgeLine(line, pn, sn, 0);
+      }
+    }
+
+    // ── Orbit rings (sub-faction + member) ───────────────────────────────────
+    if (filterKey != null) {
+      // Filtered: only the single ring keyed on this parent
+      const ring = this._orbitRingEls?.[filterKey];
+      if (ring) updateRingCenter(ring, filterKey);
+      const memberRing = this._memberOrbitRingEls?.[filterKey];
+      if (memberRing) updateRingCenter(memberRing, filterKey);
+    } else {
+      // Full pass: every ring
+      if (this._orbitRingEls) {
+        for (const [parentKey, ring] of Object.entries(this._orbitRingEls)) {
+          updateRingCenter(ring, parentKey);
+        }
+      }
+      if (this._memberOrbitRingEls) {
+        for (const [parentKey, ring] of Object.entries(this._memberOrbitRingEls)) {
+          updateRingCenter(ring, parentKey);
+        }
+      }
+    }
+
+    // ── Member spoke lines (parent ↔ member) ─────────────────────────────────
+    if (this._memberSpokeEls) {
+      for (const { line, parentKey, memberKey } of Object.values(this._memberSpokeEls)) {
+        if (filterKey != null && parentKey !== filterKey && memberKey !== filterKey) continue;
+        const pn = nodeMap[parentKey], mn = nodeMap[memberKey];
+        if (!pn || !mn) continue;
+        updateEdgeLine(line, pn, mn, 0);
+      }
+    }
+  }
+
   // ─── Shared Node Rendering ────────────────────────────────────────────────────
 
   #renderNode(node) {
@@ -967,6 +1633,25 @@ export class MindMapRenderer {
         points: `0,${-s} ${s},0 0,${s} ${-s},0`,
         class: "mm-shape mm-doc-actor"
       });
+    } else if (node.type === "doc-scene") {
+      // Hexagon (pointy-top) for Scene documents
+      const s = node.radius ?? R.docGlobal;
+      const pts = Array.from({length: 6}, (_, i) => {
+        const a = (Math.PI / 3) * i - Math.PI / 2;
+        return `${(s * Math.cos(a)).toFixed(1)},${(s * Math.sin(a)).toFixed(1)}`;
+      }).join(" ");
+      shape = this.#el("polygon", { points: pts, class: "mm-shape mm-doc-scene" });
+    } else if (node.type === "doc-journal") {
+      // Parallelogram (forward-leaning) for JournalEntry documents
+      const s = node.radius ?? R.docGlobal;
+      const w = s * 1.6, h = s * 0.85, sk = s * 0.3;
+      const pts = [
+        `${(-w/2+sk).toFixed(1)},${(-h/2).toFixed(1)}`,
+        `${( w/2+sk).toFixed(1)},${(-h/2).toFixed(1)}`,
+        `${( w/2-sk).toFixed(1)},${( h/2).toFixed(1)}`,
+        `${(-w/2-sk).toFixed(1)},${( h/2).toFixed(1)}`
+      ].join(" ");
+      shape = this.#el("polygon", { points: pts, class: "mm-shape mm-doc-journal" });
     } else if (node.type === "doc-other") {
       const s = node.radius ?? R.docGlobal;
       shape = this.#el("rect", {
@@ -992,8 +1677,8 @@ export class MindMapRenderer {
     if (color) {
       // Use inline style so it wins over CSS class fill/stroke rules
       shape.style.stroke = color;
-      // For global connected nodes, also tint the fill
-      if (node.type === "faction-global") {
+      // Fill: faction-global always; document and member nodes when color is set
+      if (node.type === "faction-global" || node.isDocument || node.isMember) {
         shape.style.fill = color;
       }
     }
@@ -1191,7 +1876,7 @@ export class MindMapRenderer {
     }
   }
 
-  #onMouseUp(_e) {
+  #onMouseUp(e) {
     // End pan
     if (this.#pan) {
       this.#pan = null;
@@ -1204,14 +1889,11 @@ export class MindMapRenderer {
     const { nodeKey, node, nodeEl, isGlobal, moved } = this.#drag;
     nodeEl.style.cursor = "";
 
-    if (isGlobal && !moved && this.#config.onSetPOV && !node.isMember) {
+    if (isGlobal && !moved && this.#config.onSetPOV) {
       this.#config.onSetPOV(nodeKey);
-    } else if (isGlobal && node.isSubFaction && moved) {
-      // Sub-faction dragged: normalize all siblings to same orbit radius
-      this.#normalizeOrbitAfterSubFactionDrag(node);
-    } else if (isGlobal && node.isMember && moved) {
-      // Member dragged: normalize all sibling members to same orbit radius
-      this.#normalizeOrbitAfterMemberDrag(node);
+    } else if (isGlobal && moved && (node.isSubFaction || node.isMember)) {
+      // Child dragged: normalize all siblings to the same orbit radius
+      this.#normalizeOrbitAfterDrag(node);
     } else {
       this.#config.onPositionSave(nodeKey, node.x, node.y);
       // Save all descendants (any depth) that moved with the dragged node
@@ -1222,30 +1904,31 @@ export class MindMapRenderer {
   }
 
   /**
-   * After a sub-faction is dragged to a new position, compute the new orbit
-   * radius from its distance to the parent and rearrange all siblings to that
-   * same radius (preserving each sibling's angle). Updates the orbit ring too.
+   * After a sub-faction or member is dragged, compute the new orbit radius from
+   * its distance to the parent and rearrange all siblings (of the same kind) to
+   * that same radius, preserving each sibling's angle. Updates the orbit ring.
+   * Sub-factions also carry their descendants along; members have none.
    */
-  #normalizeOrbitAfterSubFactionDrag(draggedSub) {
-    const parentNode = this._globalNodeMap?.[draggedSub.parentId];
+  #normalizeOrbitAfterDrag(draggedNode) {
+    const parentNode = this._globalNodeMap?.[draggedNode.parentId];
     if (!parentNode) {
-      this.#config.onPositionSave(draggedSub.key, draggedSub.x, draggedSub.y);
+      this.#config.onPositionSave(draggedNode.key, draggedNode.x, draggedNode.y);
       return;
     }
 
     const newRadius = Math.sqrt(
-      (draggedSub.x - parentNode.x) ** 2 +
-      (draggedSub.y - parentNode.y) ** 2
+      (draggedNode.x - parentNode.x) ** 2 +
+      (draggedNode.y - parentNode.y) ** 2
     );
 
-    // Rearrange every sibling (including the dragged one) to the new radius
+    const isMember = !!draggedNode.isMember;
     const siblings = Object.values(this._globalNodeEls ?? {})
       .map(({ node: n }) => n)
-      .filter(n => n.parentId === draggedSub.parentId && n.isSubFaction);
+      .filter(n => n.parentId === draggedNode.parentId &&
+                   (isMember ? n.isMember : n.isSubFaction));
 
     for (const sib of siblings) {
-      const oldX  = sib.x;
-      const oldY  = sib.y;
+      const oldX  = sib.x, oldY = sib.y;
       const angle = Math.atan2(sib.y - parentNode.y, sib.x - parentNode.x);
       sib.x = parentNode.x + newRadius * Math.cos(angle);
       sib.y = parentNode.y + newRadius * Math.sin(angle);
@@ -1254,54 +1937,25 @@ export class MindMapRenderer {
       this.#config.onPositionSave(sib.key, sib.x, sib.y);
       this.#redrawGlobalEdgesForNode(sib.key);
 
-      // Move and save any children of this sibling by the same delta
-      const sdx = sib.x - oldX, sdy = sib.y - oldY;
-      if (sdx || sdy) {
-        this.#moveDescendantsLive(sib.key, sdx, sdy);
-        this.#saveDescendantPositions(sib.key);
+      // Sub-factions can have descendants — carry them along by the same delta.
+      // Members are leaf nodes, so there's nothing to recurse into.
+      if (!isMember) {
+        const sdx = sib.x - oldX, sdy = sib.y - oldY;
+        if (sdx || sdy) {
+          this.#moveDescendantsLive(sib.key, sdx, sdy);
+          this.#saveDescendantPositions(sib.key);
+        }
       }
     }
 
-    // Update orbit ring radius
-    if (this._orbitRadii) this._orbitRadii[draggedSub.parentId] = newRadius;
-    const ring = this._orbitRingEls?.[draggedSub.parentId];
-    if (ring) ring.setAttribute("r", newRadius);
-  }
-
-  /**
-   * After a member node is dragged, compute the new orbit radius from its distance
-   * to the parent faction and rearrange all sibling members to that same radius
-   * (preserving each sibling's angle). Updates the member orbit ring too.
-   */
-  #normalizeOrbitAfterMemberDrag(draggedMember) {
-    const parentNode = this._globalNodeMap?.[draggedMember.parentId];
-    if (!parentNode) {
-      this.#config.onPositionSave(draggedMember.key, draggedMember.x, draggedMember.y);
-      return;
+    // Update the appropriate orbit ring radius
+    if (isMember) {
+      this._memberOrbitRingEls?.[draggedNode.parentId]?.setAttribute("r", newRadius);
+    } else {
+      if (this._orbitRadii) this._orbitRadii[draggedNode.parentId] = newRadius;
+      const ring = this._orbitRingEls?.[draggedNode.parentId];
+      if (ring) ring.setAttribute("r", newRadius);
     }
-
-    const newRadius = Math.sqrt(
-      (draggedMember.x - parentNode.x) ** 2 +
-      (draggedMember.y - parentNode.y) ** 2
-    );
-
-    // Rearrange every sibling member to the new radius
-    const siblings = Object.values(this._globalNodeEls ?? {})
-      .map(({ node: n }) => n)
-      .filter(n => n.isMember && n.parentId === draggedMember.parentId);
-
-    for (const sib of siblings) {
-      const angle = Math.atan2(sib.y - parentNode.y, sib.x - parentNode.x);
-      sib.x = parentNode.x + newRadius * Math.cos(angle);
-      sib.y = parentNode.y + newRadius * Math.sin(angle);
-      const sibEl = this._globalNodeEls?.[sib.key]?.el;
-      if (sibEl) sibEl.setAttribute("transform", `translate(${sib.x},${sib.y})`);
-      this.#config.onPositionSave(sib.key, sib.x, sib.y);
-      this.#redrawGlobalEdgesForNode(sib.key);
-    }
-
-    // Update member orbit ring radius
-    if (this._memberOrbitRingEls) this._memberOrbitRingEls[draggedMember.parentId]?.setAttribute("r", newRadius);
   }
 
   /**
@@ -1333,64 +1987,9 @@ export class MindMapRenderer {
     }
   }
 
-  /** Redraw all global edges, spoke lines, and orbit rings touching the given node. */
-  #redrawGlobalEdgesForNode(factionKey) {
-    const nodeMap = this._globalNodeMap;
-    if (!nodeMap) return;
-
-    // Stored relationship edges
-    if (this._globalEdgeEls) {
-      for (const { line, fromKey, toKey, curveOffset } of Object.values(this._globalEdgeEls)) {
-        if (fromKey !== factionKey && toKey !== factionKey) continue;
-        const fn = nodeMap[fromKey]; const tn = nodeMap[toKey];
-        if (!fn || !tn) continue;
-        const { x1, y1, x2, y2 } = this.#edgeEndpoints(fn, tn);
-        if (curveOffset) {
-          line.setAttribute("d", this.#curvedPath(x1, y1, x2, y2, curveOffset));
-        } else {
-          line.setAttribute("x1", x1); line.setAttribute("y1", y1);
-          line.setAttribute("x2", x2); line.setAttribute("y2", y2);
-        }
-      }
-    }
-
-    // Spoke lines (parent ↔ sub-faction)
-    if (this._spokeLinkEls) {
-      for (const { line, parentKey, subKey } of Object.values(this._spokeLinkEls)) {
-        if (parentKey !== factionKey && subKey !== factionKey) continue;
-        const pn = nodeMap[parentKey]; const sn = nodeMap[subKey];
-        if (!pn || !sn) continue;
-        const { x1, y1, x2, y2 } = this.#edgeEndpoints(pn, sn);
-        line.setAttribute("x1", x1); line.setAttribute("y1", y1);
-        line.setAttribute("x2", x2); line.setAttribute("y2", y2);
-      }
-    }
-
-    // Sub-faction orbit ring — moves when its parent faction moves
-    const ring = this._orbitRingEls?.[factionKey];
-    if (ring) {
-      const pn = nodeMap[factionKey];
-      if (pn) { ring.setAttribute("cx", pn.x); ring.setAttribute("cy", pn.y); }
-    }
-
-    // Member orbit ring — moves when its parent faction moves
-    const memberRing = this._memberOrbitRingEls?.[factionKey];
-    if (memberRing) {
-      const pn = nodeMap[factionKey];
-      if (pn) { memberRing.setAttribute("cx", pn.x); memberRing.setAttribute("cy", pn.y); }
-    }
-
-    // Member spoke lines
-    if (this._memberSpokeEls) {
-      for (const { line, parentKey, memberKey } of Object.values(this._memberSpokeEls)) {
-        if (parentKey !== factionKey && memberKey !== factionKey) continue;
-        const pn = nodeMap[parentKey]; const mn = nodeMap[memberKey];
-        if (!pn || !mn) continue;
-        const { x1, y1, x2, y2 } = this.#edgeEndpoints(pn, mn);
-        line.setAttribute("x1", x1); line.setAttribute("y1", y1);
-        line.setAttribute("x2", x2); line.setAttribute("y2", y2);
-      }
-    }
+  /** Redraw only edges / spokes / rings touching the given node (drag path). */
+  #redrawGlobalEdgesForNode(nodeKey) {
+    this.#redrawEdgesAndRings(nodeKey);
   }
 
   // ─── SVG Creation ─────────────────────────────────────────────────────────────
@@ -1446,16 +2045,8 @@ export class MindMapRenderer {
   }
 
   #nodeRadius(node) {
-    if (node.radius != null)            return node.radius;
-    if (node.type === "central")        return R.central;
-    if (node.type === "subfaction")     return R.subfaction;
-    if (node.type === "faction")        return R.faction;
-    if (node.type === "pov")            return R.pov;
-    if (node.type === "faction-global") return R.factionGlobal;
-    if (node.type === "document")       return Math.max(R.document.rx, R.document.ry);
-    if (node.type === "doc-actor"   || node.type === "doc-other")    return R.docGlobal;
-    if (node.type === "member-actor"|| node.type === "member-other") return MEMBER_NODE_R;
-    return Math.max(R.simple.rx, R.simple.ry);
+    if (node.radius != null) return node.radius;
+    return NODE_TYPE_RADIUS[node.type] ?? NODE_TYPE_RADIUS[NODE_TYPE.SIMPLE];
   }
 
   // ─── Helpers ─────────────────────────────────────────────────────────────────
