@@ -1,7 +1,11 @@
 import { FactionStore } from "./data/FactionStore.js";
 import { ProjectStore } from "./data/ProjectStore.js";
 import { RelationshipStore } from "./data/RelationshipStore.js";
+import { FolderStore } from "./data/FolderStore.js";
+import { MemberStore } from "./data/MemberStore.js";
+import { EventLogStore } from "./data/EventLogStore.js";
 import { FactionsSidebarTab } from "./apps/FactionsSidebarTab.js";
+import { FactionDetailApp } from "./apps/FactionDetailApp.js";
 
 const MODULE_ID = "ddf-faction-manager";
 
@@ -10,6 +14,27 @@ Hooks.once("init", async () => {
   FactionStore.register();
   ProjectStore.register();
   RelationshipStore.register();
+  FolderStore.register();
+  MemberStore.register();
+  EventLogStore.register();
+
+  // ── Faction text enricher  (@Faction[id]{label}) ──────────────────────────────
+  CONFIG.TextEditor.enrichers.push({
+    pattern: /@Faction\[([a-zA-Z0-9]+)\](?:\{([^}]*)\})?/g,
+    enricher: (match, options) => {
+      const id    = match[1];
+      const label = match[2]?.trim() || null;
+      const faction = FactionStore.getAll()[id];
+      const display = label || faction?.name || id;
+
+      const a = document.createElement("a");
+      a.className        = "ddf-faction-link";
+      a.dataset.factionId = id;
+      a.title            = faction?.name ?? id;
+      a.innerHTML        = `<i class="fa-solid fa-shield-halved"></i> ${foundry.utils.escapeHTML(display)}`;
+      return a;
+    }
+  });
 
   // ── Module settings (appear directly in the Game Settings panel) ──────────────
   game.settings.register(MODULE_ID, "factionJournalId", {
@@ -49,6 +74,24 @@ Hooks.once("init", async () => {
     ])
   });
 
+  game.settings.register(MODULE_ID, "relationshipMapBg", {
+    name: "Relationship Map: Background Image",
+    hint: "Image displayed behind the Faction Relationship Map. Leave blank to use the color setting instead.",
+    scope: "world",
+    config: true,
+    type: String,
+    default: ""
+  });
+
+  game.settings.register(MODULE_ID, "relationshipMapBgColor", {
+    name: "Relationship Map: Background Color",
+    hint: "Background color used when no image is set.",
+    scope: "world",
+    config: true,
+    type: String,
+    default: "#1a1c2e"
+  });
+
   game.settings.register(MODULE_ID, "connectionTypes", {
     name: "Connection Types",
     hint: "Types available when creating faction relationships. Each type has a name and a default color.",
@@ -63,6 +106,28 @@ Hooks.once("init", async () => {
       { id: "enemy",   name: "Enemy",   color: "#f44336" }
     ])
   });
+
+  // ── Sandbox Campaign Manager Integration toggles ──────────────────────────────
+  const scmSettings = [
+    { key: "scmMemberAdded",              name: "Member: Added" },
+    { key: "scmMemberRemoved",            name: "Member: Removed" },
+    { key: "scmMemberRankChanged",        name: "Member: Rank Changed" },
+    { key: "scmObjectiveCreated",         name: "Objective: Created" },
+    { key: "scmObjectiveFinished",        name: "Objective: Completed / Reactivated" },
+    { key: "scmProgressNote",             name: "Objective: Progress Note Added" },
+    { key: "scmConnectionEstablished",    name: "Connection: Established" },
+    { key: "scmConnectionTypeChanged",    name: "Connection: Type Changed" },
+    { key: "scmConnectionDirectionChanged", name: "Connection: Direction Changed" }
+  ];
+  for (const { key, name } of scmSettings) {
+    game.settings.register(MODULE_ID, key, {
+      name,
+      scope:   "world",
+      config:  true,
+      type:    Boolean,
+      default: true
+    });
+  }
 
   // ── Sidebar tab ───────────────────────────────────────────────────────────────
   Sidebar.TABS.ddfFactions = {
@@ -100,6 +165,18 @@ Hooks.once("init", async () => {
   Handlebars.registerHelper("eq", (a, b) => a === b);
 
   console.log(`${MODULE_ID} | Initialized`);
+});
+
+// ── Open faction sheet when a @Faction enricher link is clicked ───────────────
+Hooks.once("ready", () => {
+  document.addEventListener("click", (event) => {
+    const link = event.target.closest(".ddf-faction-link[data-faction-id]");
+    if (!link) return;
+    if (!game.user.isGM) return;
+    event.preventDefault();
+    event.stopPropagation();
+    FactionDetailApp.show(link.dataset.factionId);
+  }, true);
 });
 
 // ── Enhance the Game Settings panel for Faction Manager settings ──────────────
@@ -350,4 +427,101 @@ Hooks.on("renderSettingsConfig", (_app, html) => {
   ctWrap.appendChild(addCtBtn);
 
   ctInput.replaceWith(ctWrap);
+
+  // ── SCM Integration: inject section header before first SCM setting ───────
+  const scmFirstInput = root.querySelector(`input[name="${MODULE_ID}.scmMemberAdded"]`);
+  if (scmFirstInput) {
+    const formGroup = scmFirstInput.closest(".form-group");
+    if (formGroup) {
+      const header = document.createElement("div");
+      header.className = "ddf-settings-section-header";
+      header.innerHTML = `
+        <h3 class="ddf-settings-section-title">
+          <i class="fa-solid fa-book-open"></i> Sandbox Campaign Manager Integration
+        </h3>
+        <p class="ddf-settings-section-hint">
+          If the Sandbox Campaign Manager module is present, these options determine
+          which faction events are sent to session notes. Disabled events are still
+          logged in the faction's Event Log.
+        </p>
+      `;
+      formGroup.parentElement.insertBefore(header, formGroup);
+    }
+  }
+
+  // ── Relationship Map Background Image: swap text input for file picker ────
+  const bgImgInput = root.querySelector(
+    `input[name="${MODULE_ID}.relationshipMapBg"]:not([type="hidden"])`
+  );
+  if (bgImgInput) {
+    const currentPath = game.settings.get(MODULE_ID, "relationshipMapBg") ?? "";
+
+    const bgWrap = document.createElement("div");
+    bgWrap.className = "ddf-file-picker-wrap";
+
+    const pathInput       = document.createElement("input");
+    pathInput.type        = "text";
+    pathInput.name        = `${MODULE_ID}.relationshipMapBg`;
+    pathInput.value       = currentPath;
+    pathInput.placeholder = "path/to/image.webp";
+    pathInput.className   = "ddf-bg-path-input";
+
+    const browseBtn     = document.createElement("button");
+    browseBtn.type      = "button";
+    browseBtn.className = "ddf-bg-browse-btn";
+    browseBtn.title     = "Browse for image";
+    browseBtn.innerHTML = '<i class="fa-solid fa-file-image"></i>';
+    browseBtn.addEventListener("click", () => {
+      new FilePicker({
+        type:     "image",
+        current:  pathInput.value || "",
+        callback: (path) => { pathInput.value = path; }
+      }).browse();
+    });
+
+    const clearBtn     = document.createElement("button");
+    clearBtn.type      = "button";
+    clearBtn.className = "ddf-bg-clear-btn icon";
+    clearBtn.title     = "Clear image";
+    clearBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+    clearBtn.addEventListener("click", () => { pathInput.value = ""; });
+
+    bgWrap.appendChild(pathInput);
+    bgWrap.appendChild(browseBtn);
+    bgWrap.appendChild(clearBtn);
+    bgImgInput.replaceWith(bgWrap);
+  }
+
+  // ── Relationship Map Background Color: swap text input for color picker ───
+  const bgColorInput = root.querySelector(
+    `input[name="${MODULE_ID}.relationshipMapBgColor"]:not([type="hidden"])`
+  );
+  if (bgColorInput) {
+    const currentColor = game.settings.get(MODULE_ID, "relationshipMapBgColor") ?? "#1a1c2e";
+
+    const colorWrap = document.createElement("div");
+    colorWrap.className = "ddf-color-picker-wrap";
+
+    const colorSwatch       = document.createElement("input");
+    colorSwatch.type        = "color";
+    colorSwatch.value       = currentColor;
+    colorSwatch.className   = "ddf-color-swatch";
+
+    const colorText         = document.createElement("input");
+    colorText.type          = "text";
+    colorText.name          = `${MODULE_ID}.relationshipMapBgColor`;
+    colorText.value         = currentColor;
+    colorText.placeholder   = "#1a1c2e";
+    colorText.className     = "ddf-color-text-input";
+    colorText.maxLength     = 7;
+
+    colorSwatch.addEventListener("input", () => { colorText.value = colorSwatch.value; });
+    colorText.addEventListener("input",   () => {
+      if (/^#[0-9a-fA-F]{6}$/.test(colorText.value)) colorSwatch.value = colorText.value;
+    });
+
+    colorWrap.appendChild(colorSwatch);
+    colorWrap.appendChild(colorText);
+    bgColorInput.replaceWith(colorWrap);
+  }
 });

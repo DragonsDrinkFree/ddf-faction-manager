@@ -10,15 +10,77 @@
   <button type="button" class="ddf-relationships-btn">
     <i class="fa-solid fa-diagram-project"></i> Faction Relationships
   </button>
-  <div class="ddf-sidebar-search">
+  <div class="ddf-sidebar-controls">
     <input class="ddf-faction-search" type="search" placeholder="Search Factions…" />
+    <button type="button" class="ddf-sort-toggle icon" title="{{#if (eq sortMode 'alpha')}}Alphabetical — click for manual order{{else}}Manual order — click for alphabetical{{/if}}">
+      {{#if (eq sortMode "alpha")}}
+        <i class="fa-solid fa-arrow-down-a-z"></i>
+      {{else}}
+        <i class="fa-solid fa-grip-lines"></i>
+      {{/if}}
+    </button>
   </div>
 </header>
 
-<ol class="faction-items ddf-sidebar-list">
-  {{#each factions}}
-    {{> ddf-faction-item faction=this selectedId=../selectedId}}
-  {{else}}
-    <li class="faction-empty">No factions yet. Click <strong>Create Faction</strong> to get started.</li>
+<div class="ddf-sidebar-list">
+
+  {{#each sections}}
+
+    {{#if (eq type "folder")}}
+      {{!-- Named folder — styled to match Foundry's native folder appearance --}}
+      <div class="ddf-folder-section{{#unless collapsed}} expanded{{/unless}}"
+           data-folder-id="{{id}}" data-sorting="{{sorting}}">
+
+        {{!-- Header: full-row background tinted with folder color (same as native Foundry) --}}
+        <div class="ddf-folder-header"
+          {{#if color}}style="background-color:{{color}};"{{/if}}>
+          <i class="fa-solid fa-folder-open fa-fw"></i>
+          <span class="ddf-folder-name" title="{{name}}">{{name}}</span>
+          <div class="ddf-folder-controls">
+            <a class="icon ddf-folder-btn" data-action="createFactionInFolder" title="Create faction in folder">
+              <i class="fa-solid fa-plus"></i>
+            </a>
+            <a class="icon ddf-folder-btn" data-action="renameFolder" title="Edit folder">
+              <i class="fa-solid fa-pen"></i>
+            </a>
+            <a class="icon ddf-folder-btn" data-action="deleteFolder" title="Delete folder">
+              <i class="fa-solid fa-trash"></i>
+            </a>
+          </div>
+        </div>
+
+        {{!-- Contents: left border tinted with folder color (same as native Foundry) --}}
+        {{#unless collapsed}}
+          <ol class="faction-items ddf-folder-contents"
+            {{#if color}}style="border-left-color:{{color}};"{{/if}}
+            data-folder-id="{{id}}">
+            {{#each factions}}
+              {{> ddf-faction-item faction=this selectedId=../../selectedId}}
+            {{else}}
+              <li class="faction-empty ddf-folder-empty">Empty folder.</li>
+            {{/each}}
+          </ol>
+        {{/unless}}
+
+      </div>
+
+    {{else}}
+      {{!-- Unfiled factions --}}
+      {{#if factions.length}}
+        <ol class="faction-items ddf-unfiled-section" data-folder-id="">
+          {{#each factions}}
+            {{> ddf-faction-item faction=this selectedId=../../selectedId}}
+          {{/each}}
+        </ol>
+      {{else}}
+        {{#unless ../hasFolders}}
+          <p class="faction-empty ddf-no-factions-hint">
+            No factions yet. Click <strong>Create Faction</strong> to get started.
+          </p>
+        {{/unless}}
+      {{/if}}
+    {{/if}}
+
   {{/each}}
-</ol>
+
+</div>

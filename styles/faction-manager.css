@@ -29,10 +29,6 @@
   font-size: 0.82rem;
 }
 
-#ddfFactions .ddf-sidebar-search input {
-  width: 100%;
-  box-sizing: border-box;
-}
 
 #ddfFactions .ddf-sidebar-list {
   flex: 1;
@@ -1330,8 +1326,8 @@
 
 /* Right: connections pane */
 .ddf-faction-detail .faction-connections-pane {
-  width: 165px;
-  min-width: 120px;
+  width: 215px;
+  min-width: 155px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -1362,7 +1358,9 @@
 
 /* Relationship list items (in connections pane) */
 .ddf-faction-detail .rel-list-header {
-  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  padding: 4px 6px 4px 10px;
   font-weight: bold;
   font-size: 0.8rem;
   text-transform: uppercase;
@@ -1371,6 +1369,18 @@
   border-bottom: 1px solid var(--color-border-light-primary);
   flex-shrink: 0;
 }
+
+.ddf-faction-detail .rel-list-header span { flex: 1; }
+
+.ddf-faction-detail .ddf-conn-add-btn {
+  flex-shrink: 0;
+  opacity: 0.6;
+  font-size: 0.75rem;
+  padding: 2px 4px;
+  line-height: 1;
+}
+
+.ddf-faction-detail .ddf-conn-add-btn:hover { opacity: 1; }
 
 .ddf-faction-detail .rel-list-item {
   display: flex;
@@ -1439,37 +1449,54 @@
   min-width: 0;
 }
 
+.ddf-faction-detail .rel-name-link {
+  cursor: pointer;
+}
+
+.ddf-faction-detail .rel-name-link:hover {
+  color: var(--color-text-hyperlink, #4f83cc);
+  text-decoration: underline;
+}
+
 .ddf-faction-detail .rel-dir {
   flex-shrink: 0;
   font-size: 0.8rem;
   opacity: 0.55;
 }
 
-.ddf-faction-detail .rel-color-swatch {
+.ddf-faction-detail .rel-dir-btn {
   flex-shrink: 0;
-  width: 13px;
-  height: 13px;
-  border-radius: 50%;
-  border: 1.5px solid var(--color-border-primary);
-  cursor: pointer;
-  position: relative;
-  display: block;
-}
-
-.ddf-faction-detail .rel-color-swatch.rel-color-unset {
-  background: transparent;
-  border-style: dashed;
-}
-
-.ddf-faction-detail .rel-color-input {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  width: 100%;
-  height: 100%;
-  cursor: pointer;
-  padding: 0;
+  background: none;
   border: none;
+  padding: 0 2px;
+  font-size: 0.85rem;
+  opacity: 0.7;
+  cursor: pointer;
+  line-height: 1;
+  border-radius: 3px;
+  transition: opacity 0.1s, background 0.1s;
+}
+
+.ddf-faction-detail .rel-dir-btn:hover {
+  opacity: 1;
+  background: var(--color-hover-bg);
+}
+
+.ddf-faction-detail .rel-type-select {
+  flex-shrink: 0;
+  max-width: 58px;
+  font-size: 0.68rem;
+  padding: 1px 2px;
+  border-radius: 3px;
+  border: 1px solid var(--color-border-light-primary);
+  background: var(--color-bg-option, #1a1a2e);
+  color: var(--color-text-light-primary, #c9c7b8);
+  cursor: pointer;
+}
+
+.ddf-faction-detail .rel-type-select option {
+  background: var(--color-bg-option, #1a1a2e);
+  color: var(--color-text-light-primary, #c9c7b8);
 }
 
 .ddf-faction-detail .rel-list-empty {
@@ -1797,7 +1824,19 @@
 }
 
 /* Floating panels in FactionDetailApp */
-.ddf-faction-detail .mm-search-panel,
+/* Panel appended to <body> — uses position:fixed so it can float outside the window */
+.ddf-conn-panel {
+  position: fixed;
+  z-index: 9999;
+  background: var(--color-bg-sheet, #1c1c24);
+  border: 1px solid var(--color-border-primary);
+  border-radius: 6px;
+  box-shadow: 4px 8px 28px rgba(0, 0, 0, 0.75);
+  padding: 10px;
+  min-width: 220px;
+  max-width: 280px;
+}
+
 .ddf-faction-detail .mm-node-menu {
   position: absolute;
   z-index: 200;
@@ -1805,18 +1844,61 @@
   border: 1px solid var(--color-border-primary);
   border-radius: 4px;
   box-shadow: 2px 4px 10px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+  min-width: 160px;
 }
 
-.ddf-faction-detail .mm-search-panel { padding: 8px; min-width: 200px; max-width: 260px; }
-.ddf-faction-detail .mm-node-menu { overflow: hidden; min-width: 160px; }
-
-.ddf-faction-detail .mm-panel-title {
-  font-size: 0.8rem;
+.ddf-conn-panel .mm-panel-title {
+  font-size: 0.78rem;
   font-weight: bold;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  opacity: 0.7;
-  margin-bottom: 6px;
+  letter-spacing: 0.06em;
+  opacity: 0.6;
+  margin-bottom: 8px;
+}
+
+/* ── Faction candidate list: boxed container with separators ── */
+.ddf-conn-faction-list {
+  border: 1px solid var(--color-border-light-primary);
+  border-radius: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+  margin: 6px 0 8px;
+  background: var(--color-bg-option, rgba(0, 0, 0, 0.25));
+}
+
+.ddf-conn-faction-list .mm-search-result {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--color-border-light-tertiary, rgba(255, 255, 255, 0.07));
+  transition: background 0.1s;
+  font-size: 0.88rem;
+}
+
+.ddf-conn-faction-list .mm-search-result:last-child {
+  border-bottom: none;
+}
+
+.ddf-conn-faction-list .mm-search-result:hover {
+  background: var(--color-hover-bg, rgba(255, 255, 255, 0.08));
+}
+
+.ddf-conn-faction-list .ddf-link-icon {
+  color: var(--color-text-hyperlink, #4f83cc);
+  font-size: 0.75rem;
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+
+.ddf-conn-faction-list .mm-search-empty {
+  padding: 10px;
+  font-style: italic;
+  font-size: 0.82rem;
+  opacity: 0.5;
+  text-align: center;
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -1828,6 +1910,10 @@
   flex-direction: column;
   padding: 0;
   overflow: hidden;
+}
+
+.ddf-global-relationships .window-header [data-action="toggleForceLayout"].active i {
+  color: #FFD700;
 }
 
 .ddf-global-relationships .global-rel-root {
@@ -1974,6 +2060,84 @@
   opacity: 0.5;
 }
 
+/* ── Documents Section ───────────────────────────────────────────────────────── */
+
+.ddf-global-relationships .global-rel-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px 4px;
+  margin-top: 6px;
+  border-top: 1px solid var(--color-border-light-primary);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+
+.ddf-global-relationships .global-rel-section-header button {
+  opacity: 0.6;
+  font-size: 0.75rem;
+  padding: 1px 4px;
+  min-height: unset;
+  line-height: 1;
+}
+
+.ddf-global-relationships .global-rel-section-header button:hover {
+  opacity: 1;
+}
+
+.ddf-global-relationships .global-rel-doc-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  border-radius: 3px;
+  position: relative;
+}
+
+.ddf-global-relationships .global-rel-doc-item:hover {
+  background: var(--color-bg-btn);
+}
+
+.ddf-global-relationships .global-rel-doc-item.selected {
+  background: color-mix(in srgb, #FFD700 20%, var(--color-bg-option));
+  font-weight: bold;
+}
+
+.ddf-global-relationships .global-rel-doc-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ddf-global-relationships .global-rel-doc-remove {
+  opacity: 0;
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  padding: 1px 4px;
+  min-height: unset;
+  color: var(--color-level-error, #c00);
+}
+
+.ddf-global-relationships .global-rel-doc-item:hover .global-rel-doc-remove {
+  opacity: 0.6;
+}
+
+.ddf-global-relationships .global-rel-doc-item:hover .global-rel-doc-remove:hover {
+  opacity: 1;
+}
+
+.ddf-global-relationships .global-rel-doc-empty {
+  padding: 6px 12px;
+  font-size: 0.78rem;
+}
+
 /* Canvas and hint — same as existing rel tab */
 .ddf-global-relationships .relationship-canvas-wrap {
   flex: 1;
@@ -2010,11 +2174,12 @@
   font-size: 0.7rem;
 }
 
-/* Floating panels in GlobalRelationshipsApp */
-.ddf-global-relationships .mm-search-panel {
-  position: absolute;
-  z-index: 200;
-  background: var(--color-bg-sheet);
+/* Floating panels rendered on document.body (escape app clipping) */
+.ddf-fm-floating.mm-search-panel {
+  position: fixed;
+  z-index: 9000;
+  background: var(--color-bg-sheet, #1e2030);
+  background-color: #1e2030;
   border: 1px solid var(--color-border-primary);
   border-radius: 4px;
   padding: 8px;
@@ -2023,10 +2188,11 @@
   box-shadow: 2px 4px 10px rgba(0, 0, 0, 0.45);
 }
 
-.ddf-global-relationships .mm-node-menu {
-  position: absolute;
-  z-index: 200;
-  background: var(--color-bg-sheet);
+.ddf-fm-floating.mm-node-menu {
+  position: fixed;
+  z-index: 9000;
+  background: var(--color-bg-sheet, #1e2030);
+  background-color: #1e2030;
   border: 1px solid var(--color-border-primary);
   border-radius: 4px;
   overflow: hidden;
@@ -2034,7 +2200,7 @@
   min-width: 160px;
 }
 
-.ddf-global-relationships .mm-panel-title {
+.ddf-fm-floating .mm-panel-title {
   font-size: 0.8rem;
   font-weight: bold;
   text-transform: uppercase;
@@ -2043,9 +2209,9 @@
   margin-bottom: 6px;
 }
 
-.ddf-global-relationships .mm-panel-hint { font-weight: normal; opacity: 0.5; font-size: 0.75rem; }
+.ddf-fm-floating .mm-panel-hint { font-weight: normal; opacity: 0.5; font-size: 0.75rem; }
 
-.ddf-global-relationships .mm-panel-hint-text {
+.ddf-fm-floating .mm-panel-hint-text {
   font-size: 0.82rem;
   opacity: 0.7;
   font-style: italic;
@@ -2053,9 +2219,9 @@
   line-height: 1.4;
 }
 
-.ddf-global-relationships .mm-panel-options { display: flex; flex-direction: column; gap: 2px; }
+.ddf-fm-floating .mm-panel-options { display: flex; flex-direction: column; gap: 2px; }
 
-.ddf-global-relationships .mm-option {
+.ddf-fm-floating .mm-option {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2069,21 +2235,21 @@
   width: 100%;
 }
 
-.ddf-global-relationships .mm-option:hover { background: var(--color-hover-bg); }
+.ddf-fm-floating .mm-option:hover { background: var(--color-hover-bg); }
 
-.ddf-global-relationships .mm-search-input {
+.ddf-fm-floating .mm-search-input {
   width: 100%;
   box-sizing: border-box;
   margin-bottom: 4px;
 }
 
-.ddf-global-relationships .mm-search-results {
+.ddf-fm-floating .mm-search-results {
   max-height: 150px;
   overflow-y: auto;
   margin-bottom: 4px;
 }
 
-.ddf-global-relationships .mm-search-result {
+.ddf-fm-floating .mm-search-result {
   padding: 4px 8px;
   cursor: pointer;
   border-radius: 3px;
@@ -2093,23 +2259,23 @@
   gap: 6px;
 }
 
-.ddf-global-relationships .mm-search-result:hover { background: var(--color-hover-bg); }
+.ddf-fm-floating .mm-search-result:hover { background: var(--color-hover-bg); }
 
-.ddf-global-relationships .mm-result-type {
+.ddf-fm-floating .mm-result-type {
   font-size: 0.7rem;
   opacity: 0.5;
   margin-left: auto;
   flex-shrink: 0;
 }
 
-.ddf-global-relationships .mm-search-empty {
+.ddf-fm-floating .mm-search-empty {
   padding: 4px 8px;
   font-style: italic;
   font-size: 0.85rem;
   opacity: 0.5;
 }
 
-.ddf-global-relationships .mm-direction-row {
+.ddf-fm-floating .mm-direction-row {
   display: flex;
   gap: 10px;
   align-items: center;
@@ -2119,20 +2285,53 @@
   margin-top: 4px;
 }
 
-.ddf-global-relationships .mm-direction-row span { opacity: 0.6; flex-shrink: 0; }
-.ddf-global-relationships .mm-direction-row label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+.ddf-fm-floating .mm-direction-row span { opacity: 0.6; flex-shrink: 0; }
+.ddf-fm-floating .mm-direction-row label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
 
-.ddf-global-relationships .mm-panel-actions {
+.ddf-fm-floating .mm-panel-actions {
   display: flex;
   gap: 4px;
   justify-content: flex-end;
   margin-top: 6px;
 }
 
-.ddf-global-relationships .mm-panel-actions button { font-size: 0.8rem; }
-.ddf-global-relationships .mm-btn-confirm { font-weight: bold; }
+.ddf-fm-floating .mm-panel-actions button { font-size: 0.8rem; }
+.ddf-fm-floating .mm-btn-confirm { font-weight: bold; }
 
-.ddf-global-relationships .mm-node-menu-item {
+/* ── Force layout panel ──────────────────────────────────────────────────── */
+.ddf-fm-floating.mm-force-panel { min-width: 230px; }
+
+.mm-force-toggle-row {
+  display: flex;
+  align-items: center;
+  padding: 4px 0 6px;
+}
+
+.mm-force-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.mm-force-level-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  padding: 4px 0;
+  border-top: 1px solid var(--color-border-light-primary);
+  margin-top: 2px;
+}
+
+.mm-force-level-caption { opacity: 0.6; flex-shrink: 0; }
+
+.mm-force-level-slider { flex: 1; cursor: pointer; accent-color: #FFD700; }
+
+.mm-force-spacing-name { flex-shrink: 0; width: 5.5em; opacity: 0.8; font-style: italic; }
+
+.ddf-fm-floating .mm-node-menu-item {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2145,7 +2344,107 @@
   text-align: left;
 }
 
-.ddf-global-relationships .mm-node-menu-item:hover { background: var(--color-hover-bg); }
+.ddf-fm-floating .mm-node-menu-item:hover { background: var(--color-hover-bg); }
+
+.ddf-fm-floating .mm-node-menu-divider {
+  height: 1px;
+  background: var(--color-border-light-primary, rgba(255,255,255,0.15));
+  margin: 3px 0;
+}
+
+.ddf-fm-floating .mm-node-menu-section-label {
+  font-size: 0.68rem;
+  font-weight: bold;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.55;
+  padding: 2px 10px;
+}
+
+.ddf-fm-floating .mm-node-menu-edge-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px 3px 10px;
+  font-size: 0.78rem;
+}
+
+.ddf-fm-floating .mm-edge-item-dir {
+  opacity: 0.7;
+  white-space: nowrap;
+}
+
+.ddf-fm-floating .mm-edge-item-type {
+  flex: 1;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ddf-fm-floating .mm-edge-item-delete {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-level-error, #c0392b);
+  opacity: 0;
+  transition: opacity 0.15s;
+  padding: 2px 4px;
+}
+
+.ddf-fm-floating .mm-node-menu-edge-item:hover .mm-edge-item-delete {
+  opacity: 1;
+}
+
+.ddf-fm-floating .mm-doc-size-row {
+  display: flex;
+  gap: 4px;
+  padding: 4px 8px 6px;
+}
+
+.ddf-fm-floating .mm-doc-size-btn {
+  flex: 1;
+  padding: 3px 0;
+  font-size: 0.78rem;
+  font-weight: bold;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 3px;
+  cursor: pointer;
+  color: inherit;
+  transition: background 0.15s;
+}
+
+.ddf-fm-floating .mm-doc-size-btn:hover {
+  background: rgba(255,255,255,0.15);
+}
+
+.ddf-fm-floating .mm-doc-size-btn.mm-active {
+  background: var(--color-border-highlight, #7c6f57);
+  border-color: var(--color-border-highlight, #7c6f57);
+  color: #fff;
+}
+
+.ddf-fm-floating .mm-doc-size-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 2px 2px;
+}
+
+.ddf-fm-floating .mm-doc-size-slider {
+  flex: 1;
+  accent-color: var(--color-border-highlight, #7c6f57);
+  cursor: pointer;
+}
+
+.ddf-fm-floating .mm-doc-size-value {
+  font-size: 10px;
+  color: #aaa;
+  min-width: 34px;
+  text-align: right;
+}
 
 /* ═══════════════════════════════════════════════════════════════════
    SVG NODE TYPES — Global Mode
@@ -2190,6 +2489,74 @@
   stroke-dasharray: 3 5;
   opacity: 0.35;
   pointer-events: none;
+}
+
+/* Member orbit ring — inner ring, lighter than sub-faction ring */
+.mm-member-ring {
+  fill: none;
+  stroke: var(--color-border-primary, #888888);
+  stroke-width: 1;
+  stroke-dasharray: 4 6;
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+/* Member spoke lines */
+.mm-member-spoke {
+  stroke: var(--color-border-primary, #888888);
+  stroke-width: 0.75;
+  stroke-dasharray: 2 4;
+  opacity: 0.25;
+  pointer-events: none;
+}
+
+/* Linked-actor member node (diamond, blue tint) */
+.mm-node-type-member-actor .mm-shape {
+  fill: color-mix(in srgb, #5b8dd9 45%, var(--color-bg-option));
+  stroke: #5b8dd9;
+  stroke-width: 1.5;
+}
+
+/* Unlinked member node (diamond, muted) */
+.mm-node-type-member-other .mm-shape {
+  fill: color-mix(in srgb, var(--color-bg-option) 60%, #777);
+  stroke: var(--color-border-primary);
+  stroke-width: 1.25;
+}
+
+/* Member node labels — small font, centered inside diamond */
+.mm-node-type-member-actor .mm-node-label,
+.mm-node-type-member-other .mm-node-label {
+  font-size: 9px;
+  opacity: 0.9;
+}
+
+/* Document Actor node on global map (diamond) */
+.mm-node-type-doc-actor .mm-shape {
+  fill: color-mix(in srgb, #e67e22 35%, var(--color-bg-option));
+  stroke: #e67e22;
+  stroke-width: 1.5;
+}
+
+/* Other document node on global map (square) */
+.mm-node-type-doc-other .mm-shape {
+  fill: color-mix(in srgb, #8e44ad 35%, var(--color-bg-option));
+  stroke: #8e44ad;
+  stroke-width: 1.5;
+}
+
+/* Scene document node (hexagon, teal) */
+.mm-node-type-doc-scene .mm-shape {
+  fill: color-mix(in srgb, #16a085 35%, var(--color-bg-option));
+  stroke: #16a085;
+  stroke-width: 1.5;
+}
+
+/* JournalEntry document node (parallelogram, amber) */
+.mm-node-type-doc-journal .mm-shape {
+  fill: color-mix(in srgb, #d4ac0d 35%, var(--color-bg-option));
+  stroke: #d4ac0d;
+  stroke-width: 1.5;
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -2344,6 +2711,66 @@
 }
 
 /* ═══════════════════════════════════════════════════════════════════
+   RELATIONSHIP MAP BACKGROUND SETTINGS
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* File picker row: [text input][browse][clear] */
+.ddf-file-picker-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+}
+
+.ddf-file-picker-wrap .ddf-bg-path-input {
+  flex: 1;
+  font-size: 0.85rem;
+  margin: 0;
+  height: unset;
+}
+
+.ddf-file-picker-wrap .ddf-bg-browse-btn,
+.ddf-file-picker-wrap .ddf-bg-clear-btn {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  font-size: 0.85rem;
+  min-height: unset;
+}
+
+.ddf-file-picker-wrap .ddf-bg-clear-btn {
+  opacity: 0.55;
+}
+.ddf-file-picker-wrap .ddf-bg-clear-btn:hover {
+  opacity: 1;
+  color: var(--color-level-error, #c00);
+}
+
+/* Color picker row: [swatch][hex text] */
+.ddf-color-picker-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ddf-color-picker-wrap .ddf-color-swatch {
+  width: 36px;
+  height: 26px;
+  padding: 1px 2px;
+  border-radius: 4px;
+  border: 1px solid var(--color-border-light-primary);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.ddf-color-picker-wrap .ddf-color-text-input {
+  width: 90px;
+  font-family: monospace;
+  font-size: 0.85rem;
+  margin: 0;
+  height: unset;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
    CONNECTION TYPE BADGE  (.rel-type-badge)
    Small colored pill shown on each stored connection in the detail pane.
    ═══════════════════════════════════════════════════════════════════ */
@@ -2383,4 +2810,899 @@
   flex: 1;
   font-size: 0.82rem;
   padding: 2px 4px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   SIDEBAR — CONTROLS ROW (search + sort toggle)
+   ═══════════════════════════════════════════════════════════════════ */
+
+#ddfFactions .ddf-sidebar-controls {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+#ddfFactions .ddf-sidebar-controls .ddf-faction-search {
+  flex: 1;
+  box-sizing: border-box;
+}
+
+#ddfFactions .ddf-sort-toggle {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  font-size: 0.85rem;
+  opacity: 0.7;
+  transition: opacity 0.15s, background 0.1s;
+}
+
+#ddfFactions .ddf-sort-toggle:hover {
+  opacity: 1;
+  background: var(--color-hover-bg);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   SIDEBAR — FOLDER SECTIONS  (matches native Foundry li.folder style)
+   ═══════════════════════════════════════════════════════════════════ */
+
+#ddfFactions .ddf-folder-section {
+  --folder-padding: 6px;
+  --ddf-folder-bg: var(--color-dark-1, #111);
+  border-top: 1px solid var(--color-dark-1, #111);
+}
+
+/* Folder header — mirrors li.folder > .folder-header from foundry2.css */
+#ddfFactions .ddf-folder-header {
+  color: var(--color-light-2, #efe6d8);
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: var(--folder-padding, 6px);
+  line-height: var(--sidebar-folder-height, 24px);
+  /* background-color set via inline style when color present; falls back here */
+  background: var(--color-dark-1, #111);
+  text-shadow: 0 0 3px var(--color-dark-1, #111);
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  cursor: pointer;
+  user-select: none;
+}
+
+/* Folder icon — matches li.folder > .folder-header > i */
+#ddfFactions .ddf-folder-header > i.fa-fw {
+  margin-right: 10px;
+  flex-shrink: 0;
+}
+
+/* Collapsed: switch folder-open icon to folder-closed, matching Foundry */
+#ddfFactions .ddf-folder-section:not(.expanded) .ddf-folder-header > i::before {
+  content: "\f07b"; /* fa-folder (closed) */
+}
+
+/* Folder name — matches li.folder > .folder-header .folder-name */
+#ddfFactions .ddf-folder-name {
+  flex: 1;
+  font-size: var(--font-size-16, 1rem);
+  line-height: var(--sidebar-folder-height, 24px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Control buttons — styled like native Foundry .create-button */
+#ddfFactions .ddf-folder-controls {
+  display: none;
+  align-items: center;
+  gap: 0;
+  flex-shrink: 0;
+}
+
+#ddfFactions .ddf-folder-header:hover .ddf-folder-controls {
+  display: flex;
+}
+
+#ddfFactions .ddf-folder-btn {
+  --button-text-color: var(--color-light-2, #efe6d8);
+  --button-border-color: transparent;
+  --button-background-color: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--sidebar-folder-height, 24px);
+  width: 20px;
+  margin: 0 0 0 3px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  color: var(--color-light-2, #efe6d8);
+  text-shadow: inherit;
+  opacity: 0.85;
+}
+
+#ddfFactions .ddf-folder-btn:hover {
+  opacity: 1;
+  text-shadow: 0 0 6px var(--color-shadow-primary);
+}
+
+/* Folder contents — left border tinted with folder color (same as native .subdirectory) */
+#ddfFactions .ddf-folder-contents {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-left: 6px solid var(--color-dark-1, #111);
+  /* border-left-color set via inline style when color present */
+}
+
+#ddfFactions .ddf-unfiled-section {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  min-height: 4px;
+}
+
+/* Indent faction items within folders to align with the border */
+#ddfFactions .ddf-folder-contents .faction-item-row {
+  padding-left: 6px;
+}
+
+#ddfFactions .ddf-folder-empty {
+  padding: 4px 10px;
+  font-style: italic;
+  font-size: 0.82rem;
+  opacity: 0.5;
+  list-style: none;
+  color: var(--color-text-dark-secondary);
+}
+
+#ddfFactions .ddf-no-factions-hint {
+  padding: 8px 12px;
+  font-style: italic;
+  font-size: 0.85rem;
+  opacity: 0.6;
+  margin: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   SIDEBAR — DRAG & DROP (manual sort mode sections)
+   Only items that JS marks draggable="true" show the grab cursor.
+   ═══════════════════════════════════════════════════════════════════ */
+
+#ddfFactions .faction-item[draggable="true"] {
+  cursor: grab;
+}
+
+#ddfFactions .faction-item[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+#ddfFactions .faction-item.ddf-drag-source {
+  opacity: 0.35;
+}
+
+#ddfFactions .faction-item.ddf-drop-above {
+  box-shadow: inset 0 2px 0 0 var(--color-text-dark-primary);
+}
+
+#ddfFactions .faction-item.ddf-drop-below {
+  box-shadow: inset 0 -2px 0 0 var(--color-text-dark-primary);
+}
+
+#ddfFactions .ddf-folder-header.ddf-drag-over {
+  outline: 2px dashed var(--color-light-2, #efe6d8);
+  outline-offset: -2px;
+}
+
+#ddfFactions .ddf-unfiled-section.ddf-drag-over {
+  background: color-mix(in srgb, var(--color-bg-btn, #4b5ea8) 15%, transparent);
+  outline: 2px dashed var(--color-border-light-primary);
+  border-radius: 3px;
+  min-height: 32px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   FACTION ENRICHER LINKS  (.ddf-faction-link)
+   Rendered wherever @Faction[id]{label} appears in enriched HTML.
+   ═══════════════════════════════════════════════════════════════════ */
+
+.ddf-faction-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  color: var(--color-text-hyperlink, #4f83cc);
+  text-decoration: none;
+  border-bottom: 1px dotted currentColor;
+  transition: opacity 0.1s;
+}
+
+.ddf-faction-link:hover {
+  opacity: 0.75;
+  text-decoration: none;
+}
+
+.ddf-faction-link i {
+  font-size: 0.8em;
+  opacity: 0.8;
+}
+
+/* ─── Members Tab ──────────────────────────────────────────────────────────── */
+
+.ddf-faction-detail .members-layout {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ── Left Pane: Member List ── */
+.ddf-faction-detail .member-list {
+  width: 200px;
+  min-width: 160px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--color-border-light-primary);
+  overflow-y: auto;
+}
+
+.ddf-faction-detail .member-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  font-weight: bold;
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--color-border-light-primary);
+  flex-shrink: 0;
+}
+
+.ddf-faction-detail .member-list-actions {
+  display: flex;
+  gap: 2px;
+}
+
+.ddf-faction-detail .member-list-actions .icon {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-light-primary);
+}
+
+.ddf-faction-detail .member-list-actions .icon:hover {
+  color: var(--color-text-primary);
+}
+
+/* Rank section header */
+.ddf-faction-detail .member-rank-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 8px 4px;
+  background: color-mix(in srgb, var(--color-bg-option, #1a1a24) 100%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border-light-primary) 60%, transparent);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.ddf-faction-detail .member-rank-icon {
+  font-size: 0.6rem;
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+
+.ddf-faction-detail .member-rank-name {
+  flex: 1;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-light-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ddf-faction-detail .member-rank-controls {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.ddf-faction-detail .member-rank-header:hover .member-rank-controls {
+  opacity: 1;
+}
+
+.ddf-faction-detail .member-rank-controls .icon {
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  color: var(--color-text-light-primary);
+  cursor: pointer;
+}
+
+.ddf-faction-detail .member-rank-controls .icon:hover {
+  color: var(--color-text-primary);
+}
+
+/* Unranked section */
+.ddf-faction-detail .member-unranked .member-rank-name {
+  color: var(--color-text-dark-secondary, #666);
+  font-style: italic;
+}
+
+/* Member items */
+.ddf-faction-detail .member-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px 5px 18px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border-light-primary) 30%, transparent);
+  transition: background 0.1s;
+}
+
+.ddf-faction-detail .member-item:hover {
+  background: var(--color-bg-option);
+}
+
+.ddf-faction-detail .member-item.selected {
+  background: color-mix(in srgb, var(--color-bg-btn, #444) 60%, transparent);
+  color: var(--color-text-primary);
+}
+
+.ddf-faction-detail .member-item-icon {
+  font-size: 0.7rem;
+  opacity: 0.45;
+  flex-shrink: 0;
+}
+
+.ddf-faction-detail .member-item-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ddf-faction-detail .member-item-empty {
+  padding: 4px 18px;
+  font-size: 0.75rem;
+  font-style: italic;
+  color: var(--color-text-dark-secondary, #666);
+}
+
+.ddf-faction-detail .member-empty-hint {
+  padding: 16px 12px;
+  font-size: 0.8rem;
+  text-align: center;
+  color: var(--color-text-light-primary);
+  line-height: 1.8;
+}
+
+/* ── Right Pane: Member Detail ── */
+.ddf-faction-detail .member-detail {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+}
+
+.ddf-faction-detail .member-detail-header {
+  padding: 12px 16px 8px;
+  border-bottom: 1px solid var(--color-border-light-primary);
+  flex-shrink: 0;
+}
+
+.ddf-faction-detail .member-name-input {
+  width: 100%;
+  font-size: 1.15rem;
+  font-weight: bold;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid transparent;
+  color: var(--color-text-primary);
+  padding: 2px 4px;
+  transition: border-color 0.15s;
+}
+
+.ddf-faction-detail .member-name-input:hover,
+.ddf-faction-detail .member-name-input:focus {
+  border-bottom-color: var(--color-border-primary);
+  outline: none;
+  background: color-mix(in srgb, var(--color-bg-option) 50%, transparent);
+}
+
+.ddf-faction-detail .member-detail-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ddf-faction-detail .member-detail-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ddf-faction-detail .member-detail-label {
+  width: 56px;
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-light-primary);
+}
+
+.ddf-faction-detail .member-rank-select {
+  flex: 1;
+}
+
+.ddf-faction-detail .member-actor-linked {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+
+.ddf-faction-detail .member-actor-name {
+  flex: 1;
+  font-style: italic;
+}
+
+.ddf-faction-detail .ddf-link-actor-btn {
+  font-size: 0.8rem;
+  padding: 3px 8px;
+}
+
+.ddf-faction-detail .member-detail-footer {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid color-mix(in srgb, var(--color-border-light-primary) 50%, transparent);
+}
+
+.ddf-faction-detail .ddf-member-delete-btn {
+  font-size: 0.8rem;
+  color: var(--color-level-error, #c44);
+  background: none;
+  border: 1px solid color-mix(in srgb, var(--color-level-error, #c44) 60%, transparent);
+  padding: 4px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.ddf-faction-detail .ddf-member-delete-btn:hover {
+  background: color-mix(in srgb, var(--color-level-error, #c44) 15%, transparent);
+}
+
+/* ─── Add Member Panel ─────────────────────────────────────────────────────── */
+
+.ddf-member-add-panel .ddf-member-add-actions {
+  display: flex;
+  gap: 6px;
+  padding: 8px 0 0;
+  border-top: 1px solid var(--color-border-light-primary);
+  margin-top: 6px;
+}
+
+.ddf-member-add-panel .ddf-member-btn-unlinked,
+.ddf-member-add-panel .ddf-member-btn-new-actor {
+  flex: 1;
+  font-size: 0.78rem;
+  padding: 5px 6px;
+  white-space: nowrap;
+}
+
+.ddf-member-add-panel .mm-search-result.ddf-already-linked {
+  opacity: 0.45;
+  cursor: default;
+  pointer-events: none;
+}
+
+.ddf-linked-badge {
+  font-size: 0.68rem;
+  color: var(--color-text-light-primary);
+  font-style: italic;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* ─── Sub-faction Member Sections ─────────────────────────────────────────── */
+
+.ddf-faction-detail .member-subfaction-divider {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 8px 4px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-dark-secondary, #666);
+}
+
+.ddf-faction-detail .member-subfaction-divider::before,
+.ddf-faction-detail .member-subfaction-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: color-mix(in srgb, var(--color-border-light-primary) 50%, transparent);
+}
+
+.ddf-faction-detail .member-subfaction-header .member-rank-name {
+  color: var(--color-text-light-primary);
+  font-style: italic;
+}
+
+/* Member detail — faction badge */
+.ddf-faction-detail .member-faction-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.8rem;
+  font-style: italic;
+  color: var(--color-text-light-primary);
+}
+
+/* Member detail footer — move + delete side by side */
+.ddf-faction-detail .member-detail-footer {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ddf-faction-detail .ddf-member-move-btn {
+  font-size: 0.8rem;
+  padding: 4px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+/* ─── Event Log Tab ────────────────────────────────────────────────────────── */
+
+.ddf-faction-detail .tab.eventlog {
+  flex-direction: column;
+  padding: 10px 14px;
+  gap: 0;
+}
+
+.ddf-faction-detail .event-log-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--color-border-light-primary);
+  margin-bottom: 8px;
+  flex-shrink: 0;
+}
+
+.ddf-faction-detail .event-log-title {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ddf-faction-detail .event-log-count {
+  font-size: 0.75rem;
+  opacity: 0.55;
+}
+
+.ddf-faction-detail .event-log-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ddf-faction-detail .event-log-entry {
+  display: grid;
+  grid-template-columns: 20px 1fr auto;
+  align-items: baseline;
+  gap: 8px;
+  padding: 5px 6px;
+  border-radius: 4px;
+  font-size: 0.82rem;
+  transition: background 0.1s;
+}
+
+.ddf-faction-detail .event-log-entry:hover {
+  background: var(--color-hover-bg, rgba(255,255,255,0.06));
+}
+
+.ddf-faction-detail .event-log-icon {
+  text-align: center;
+  font-size: 0.75rem;
+  opacity: 0.7;
+}
+
+/* Category tints */
+.ddf-faction-detail .event-log-cat-member   .event-log-icon { color: #6aadff; }
+.ddf-faction-detail .event-log-cat-objective .event-log-icon { color: #7ddf7d; }
+.ddf-faction-detail .event-log-cat-connection .event-log-icon { color: #e5a840; }
+
+.ddf-faction-detail .event-log-text {
+  flex: 1;
+  line-height: 1.35;
+}
+
+.ddf-faction-detail .event-log-time {
+  font-size: 0.72rem;
+  opacity: 0.45;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.ddf-faction-detail .event-log-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex: 1;
+  opacity: 0.5;
+  text-align: center;
+  font-size: 0.85rem;
+  font-style: italic;
+  padding: 40px 20px;
+}
+
+.ddf-faction-detail .event-log-empty i {
+  font-size: 2rem;
+  opacity: 0.4;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   FACTION TAGS
+   ═══════════════════════════════════════════════════════════════════ */
+
+.ddf-faction-detail .faction-tags-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 12px 6px;
+}
+
+.ddf-faction-detail .ddf-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px 2px 9px;
+  background: rgba(124, 111, 87, 0.18);
+  border: 1px solid rgba(124, 111, 87, 0.35);
+  border-radius: 12px;
+  font-size: 0.75rem;
+  color: var(--color-text-primary);
+}
+
+.ddf-faction-detail .ddf-tag-label {
+  line-height: 1;
+}
+
+.ddf-faction-detail .ddf-tag-remove {
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.6rem;
+  opacity: 0;
+  transition: opacity 0.15s;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+.ddf-faction-detail .ddf-tag:hover .ddf-tag-remove {
+  opacity: 0.7;
+}
+
+.ddf-faction-detail .ddf-tag-remove:hover {
+  opacity: 1 !important;
+}
+
+.ddf-faction-detail .ddf-tag-add {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  font-size: 0.7rem;
+  opacity: 0.5;
+  border: 1px dashed currentColor;
+  border-radius: 12px;
+  background: none;
+  cursor: pointer;
+  padding: 0 5px;
+  transition: opacity 0.15s;
+}
+
+.ddf-faction-detail .ddf-tag-add:hover {
+  opacity: 1;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   OBJECTIVE PROGRESS TRACK
+   ═══════════════════════════════════════════════════════════════════ */
+
+.ddf-faction-detail .obj-progress-track {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.ddf-faction-detail .obj-progress-pip {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  border: 1px solid rgba(255,255,255,0.2);
+  background: rgba(255,255,255,0.08);
+  transition: background 0.15s;
+}
+
+.ddf-faction-detail .obj-progress-pip.filled {
+  background: var(--color-border-highlight, #7c6f57);
+  border-color: var(--color-border-highlight, #7c6f57);
+}
+
+.ddf-faction-detail .obj-progress-pip.finished.filled {
+  background: #5a8a5a;
+  border-color: #5a8a5a;
+}
+
+.ddf-faction-detail .project-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.ddf-faction-detail .project-name-row h3 {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   SECRETS & RUMORS PANEL
+   ═══════════════════════════════════════════════════════════════════ */
+
+.ddf-faction-detail .faction-intel-section {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding: 8px 12px 10px;
+  border-top: 1px solid var(--color-border-light-primary);
+  margin-top: 8px;
+}
+
+.ddf-faction-detail .faction-intel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.75;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  margin-bottom: 4px;
+}
+
+.ddf-faction-detail .faction-intel-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ddf-faction-detail .faction-intel-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  background: rgba(0,0,0,0.12);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.ddf-faction-detail .faction-intel-text {
+  flex: 1;
+  word-break: break-word;
+}
+
+.ddf-faction-detail .faction-intel-delete {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+  opacity: 0;
+  transition: opacity 0.15s;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 0;
+  margin-top: 1px;
+}
+
+.ddf-faction-detail .faction-intel-item:hover .faction-intel-delete {
+  opacity: 0.6;
+}
+
+.ddf-faction-detail .faction-intel-delete:hover {
+  opacity: 1 !important;
+}
+
+.ddf-faction-detail .faction-intel-empty {
+  font-size: 0.78rem;
+  font-style: italic;
+  opacity: 0.45;
+  padding: 2px 4px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   SETTINGS PANEL — SCM Integration section header
+   ═══════════════════════════════════════════════════════════════════ */
+
+.ddf-settings-section-header {
+  margin: 1.25rem 0 0.5rem;
+  padding: 0.6rem 0.75rem;
+  border-left: 3px solid var(--color-border-highlight, #7c6f57);
+  background: rgba(0,0,0,0.07);
+  border-radius: 0 4px 4px 0;
+}
+
+.ddf-settings-section-title {
+  margin: 0 0 0.3rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.ddf-settings-section-hint {
+  margin: 0;
+  font-size: 0.8rem;
+  opacity: 0.7;
+  font-style: italic;
+  line-height: 1.4;
 }

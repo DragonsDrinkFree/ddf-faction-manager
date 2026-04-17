@@ -24,6 +24,21 @@
           </button>
         </div>
 
+        {{!-- Tags bar --}}
+        <div class="faction-tags-bar">
+          {{#each factionTags}}
+            <span class="ddf-tag">
+              <span class="ddf-tag-label">{{this}}</span>
+              <button type="button" class="ddf-tag-remove icon" data-action="deleteTag" data-tag="{{this}}" title="Remove tag">
+                <i class="fa-solid fa-xmark"></i>
+              </button>
+            </span>
+          {{/each}}
+          <button type="button" class="ddf-tag-add icon" data-action="addTag" title="Add tag">
+            <i class="fa-solid fa-tag"></i><i class="fa-solid fa-plus fa-2xs"></i>
+          </button>
+        </div>
+
         {{!-- Full-width stats bar --}}
         {{#if statDefinitions.length}}
         <div class="faction-stats-bar">
@@ -57,13 +72,14 @@
           <div class="faction-connections-pane">
             <div class="rel-list-header">
               <span>Connections</span>
+              <button type="button" class="icon ddf-conn-add-btn" data-action="addConnection" title="Add connection">
+                <i class="fa-solid fa-plus"></i>
+              </button>
             </div>
             <div class="faction-connections-body">
               {{#each relationshipItems}}
                 <div class="rel-list-item{{#if isAuto}} rel-auto{{/if}}{{#if isParentLink}} rel-parent-link{{/if}}" data-edge-id="{{id}}">
-                  <i class="rel-type-icon {{icon}}"></i>
-                  <span class="rel-name" title="{{name}}">{{name}}</span>
-                  <span class="rel-dir">{{directionSymbol}}</span>
+                  {{!-- Left: link-slash delete button for actionable connections, icon for sub-factions --}}
                   {{#if isParentLink}}
                     <button type="button" class="rel-break-btn icon"
                             data-action="breakParentLink"
@@ -71,30 +87,89 @@
                             title="Break parent link">
                       <i class="fa-solid fa-link-slash"></i>
                     </button>
+                  {{else if isAuto}}
+                    {{#if icon}}<i class="rel-type-icon {{icon}}"></i>{{/if}}
+                  {{else}}
+                    <button type="button" class="rel-break-btn icon"
+                            data-action="deleteConnection"
+                            data-edge-id="{{id}}"
+                            title="Remove connection">
+                      <i class="fa-solid fa-link-slash"></i>
+                    </button>
                   {{/if}}
-                  {{#unless isAuto}}
-                    {{#if connectionTypeName}}
-                      <span class="rel-type-badge" style="background:{{connectionTypeColor}}">{{connectionTypeName}}</span>
-                    {{/if}}
-                    <label class="rel-color-swatch{{#unless color}} rel-color-unset{{/unless}}"
-                      title="Override color"
-                      style="{{#if color}}background:{{color}};{{/if}}">
-                      <input type="color" class="rel-color-input"
-                        value="{{#if color}}{{color}}{{else}}#888888{{/if}}"
-                        data-edge-id="{{id}}" />
-                    </label>
-                  {{/unless}}
+                  <span class="rel-name rel-name-link"
+                        data-action="openConnection"
+                        {{#if targetFactionId}}data-target-faction-id="{{targetFactionId}}"{{/if}}
+                        {{#if documentUuid}}data-document-uuid="{{documentUuid}}"{{/if}}
+                        title="{{name}}">{{name}}</span>
+                  {{#if isAuto}}
+                    <span class="rel-dir">{{directionSymbol}}</span>
+                  {{else}}
+                    <button type="button" class="rel-dir-btn" data-edge-id="{{id}}" data-direction="{{direction}}" data-reversed="{{isReversed}}" title="Toggle direction">{{directionSymbol}}</button>
+                    <select class="rel-type-select" data-edge-id="{{id}}">
+                      <option value="">—</option>
+                      {{#each ../connectionTypes}}
+                        <option value="{{id}}" {{#if (eq id ../connectionTypeId)}}selected{{/if}}>{{name}}</option>
+                      {{/each}}
+                    </select>
+                  {{/if}}
                 </div>
               {{else}}
                 <div class="rel-list-empty">
                   <p>No connections yet.</p>
-                  <p>Use Faction Relationships to add one.</p>
+                  <p>Use <strong>+</strong> to add one.</p>
                 </div>
               {{/each}}
             </div>
           </div>
 
         </div>
+
+        {{!-- Secrets & Rumors panel --}}
+        {{!-- TODO: future refactor — add visibility toggles, source attribution, PC-knowledge tracking --}}
+        <div class="faction-intel-section">
+          <div class="faction-intel-col">
+            <div class="faction-intel-header">
+              <span><i class="fa-solid fa-user-secret"></i> Secrets</span>
+              <button type="button" class="icon" data-action="addSecret" title="Add secret">
+                <i class="fa-solid fa-plus"></i>
+              </button>
+            </div>
+            <ul class="faction-intel-list">
+              {{#each secrets}}
+                <li class="faction-intel-item" data-secret-id="{{id}}">
+                  <span class="faction-intel-text">{{text}}</span>
+                  <button type="button" class="faction-intel-delete icon" data-action="deleteSecret" data-secret-id="{{id}}" title="Remove">
+                    <i class="fa-solid fa-xmark"></i>
+                  </button>
+                </li>
+              {{else}}
+                <li class="faction-intel-empty">None recorded.</li>
+              {{/each}}
+            </ul>
+          </div>
+          <div class="faction-intel-col">
+            <div class="faction-intel-header">
+              <span><i class="fa-solid fa-comments"></i> Rumors</span>
+              <button type="button" class="icon" data-action="addRumor" title="Add rumor">
+                <i class="fa-solid fa-plus"></i>
+              </button>
+            </div>
+            <ul class="faction-intel-list">
+              {{#each rumors}}
+                <li class="faction-intel-item" data-rumor-id="{{id}}">
+                  <span class="faction-intel-text">{{text}}</span>
+                  <button type="button" class="faction-intel-delete icon" data-action="deleteRumor" data-rumor-id="{{id}}" title="Remove">
+                    <i class="fa-solid fa-xmark"></i>
+                  </button>
+                </li>
+              {{else}}
+                <li class="faction-intel-empty">None recorded.</li>
+              {{/each}}
+            </ul>
+          </div>
+        </div>
+
       {{else}}
         <div class="faction-no-selection">
           <i class="fa-solid fa-shield-halved"></i>
@@ -103,7 +178,7 @@
       {{/if}}
     </section>
 
-    {{!-- Projects Tab --}}
+    {{!-- Objectives Tab --}}
     <section class="tab projects {{#if (eq activeTab "projects")}}active{{/if}}" data-tab="projects">
       {{#if selectedFaction}}
         <div class="projects-layout">
@@ -111,7 +186,7 @@
           {{!-- Left Pane: Project List --}}
           <div class="project-list">
             <div class="project-list-header">
-              <span>Projects</span>
+              <span>Objectives</span>
               <button type="button" class="icon" data-action="createProject" title="New Project">
                 <i class="fa-solid fa-plus"></i>
               </button>
@@ -169,9 +244,14 @@
             {{#if selectedProject}}
 
               <div class="project-detail-header">
-                <h3>{{selectedProject.name}}</h3>
+                <div class="project-name-row">
+                  <h3>{{selectedProject.name}}</h3>
+                  <button type="button" class="icon" data-action="editObjective" title="Edit name / required progress">
+                    <i class="fa-solid fa-pen"></i>
+                  </button>
+                </div>
                 <div class="project-header-actions">
-                  <span class="project-progress-value">{{selectedProject.progress}}%</span>
+                  <span class="project-progress-value">{{selectedProject.filled}}/{{selectedProject.sections}}</span>
                   {{#if (eq selectedProject.status "active")}}
                     <button type="button" data-action="finishProject">
                       <i class="fa-solid fa-flag-checkered"></i> Finish
@@ -235,11 +315,11 @@
                     {{/if}}
                   </div>
                   <div class="note-draft-presets ddf-note-presets">
-                    <label class="ddf-preset-btn"><input type="radio" name="note_preset" value="10">+10%</label>
-                    <label class="ddf-preset-btn"><input type="radio" name="note_preset" value="25">+25%</label>
-                    <label class="ddf-preset-btn"><input type="radio" name="note_preset" value="50">+50%</label>
+                    <label class="ddf-preset-btn"><input type="radio" name="note_preset" value="1">+1</label>
+                    <label class="ddf-preset-btn"><input type="radio" name="note_preset" value="2">+2</label>
+                    <label class="ddf-preset-btn"><input type="radio" name="note_preset" value="3">+3</label>
                     <input type="number" name="note_custom" class="ddf-delta-custom"
-                      placeholder="Custom %" min="-100" max="100" />
+                      placeholder="Progress" min="-99" max="99" />
                     <button type="button" class="note-draft-save" data-action="saveInlineNote">
                       <i class="fa-solid fa-floppy-disk"></i> Save
                     </button>
@@ -276,7 +356,7 @@
             {{else}}
               <div class="faction-no-selection">
                 <i class="fa-solid fa-list-check"></i>
-                <p>Select a project to view details.</p>
+                <p>Select an objective to view details.</p>
               </div>
             {{/if}}
           </div>
@@ -286,6 +366,212 @@
         <div class="faction-no-selection">
           <i class="fa-solid fa-shield-halved"></i>
           <p>Select a faction to view details.</p>
+        </div>
+      {{/if}}
+    </section>
+
+    {{!-- Members Tab --}}
+    <section class="tab members {{#if (eq activeTab "members")}}active{{/if}}" data-tab="members">
+      {{#if selectedFaction}}
+        <div class="members-layout">
+
+          {{!-- Left Pane: Member List --}}
+          <div class="member-list">
+            <div class="member-list-header">
+              <span>Members</span>
+              <div class="member-list-actions">
+                <button type="button" class="icon" data-action="addRank" title="Add Rank">
+                  <i class="fa-solid fa-layer-group"></i>
+                </button>
+                <button type="button" class="icon" data-action="addMember" title="Add Member">
+                  <i class="fa-solid fa-user-plus"></i>
+                </button>
+              </div>
+            </div>
+
+            {{#each membersByRank}}
+              <div class="member-rank-section{{#unless rankId}} member-unranked{{/unless}}"
+                   {{#if rankId}}data-rank-id="{{rankId}}"{{/if}}>
+
+                <div class="member-rank-header">
+                  <i class="fa-solid fa-chevron-right fa-fw member-rank-icon"></i>
+                  <span class="member-rank-name" title="{{rankDescription}}">{{rankName}}</span>
+                  {{#if rankId}}
+                    <div class="member-rank-controls">
+                      <a class="icon" data-action="editRank" data-rank-id="{{rankId}}" title="Edit rank">
+                        <i class="fa-solid fa-pen"></i>
+                      </a>
+                      <a class="icon" data-action="deleteRank" data-rank-id="{{rankId}}" title="Delete rank">
+                        <i class="fa-solid fa-trash"></i>
+                      </a>
+                    </div>
+                  {{/if}}
+                </div>
+
+                {{#each members}}
+                  <div class="member-item{{#if (eq id ../selectedMemberId)}} selected{{/if}}"
+                       data-action="selectMember" data-member-id="{{id}}">
+                    <i class="fa-solid fa-user fa-fw member-item-icon"></i>
+                    <span class="member-item-name">{{name}}</span>
+                  </div>
+                {{else}}
+                  <div class="member-item-empty">No members</div>
+                {{/each}}
+
+              </div>
+            {{else}}
+              <div class="member-empty-hint">
+                <p>No ranks or members yet.</p>
+                <p>Use <i class="fa-solid fa-layer-group"></i> to add a rank, or <i class="fa-solid fa-user-plus"></i> to add a member.</p>
+              </div>
+            {{/each}}
+
+            {{!-- Sub-faction member sections --}}
+            {{#if subFactionSections.length}}
+              <div class="member-subfaction-divider">
+                <span>Sub-factions</span>
+              </div>
+              {{#each subFactionSections}}
+                <div class="member-rank-section member-subfaction-section">
+                  <div class="member-rank-header member-subfaction-header">
+                    <i class="fa-solid fa-shield-halved fa-fw member-rank-icon"></i>
+                    <span class="member-rank-name">{{factionName}}</span>
+                  </div>
+                  {{#each members}}
+                    <div class="member-item{{#if (eq id ../selectedMemberId)}} selected{{/if}}"
+                         data-action="selectMember" data-member-id="{{id}}">
+                      <i class="fa-solid fa-user fa-fw member-item-icon"></i>
+                      <span class="member-item-name">{{name}}</span>
+                    </div>
+                  {{else}}
+                    <div class="member-item-empty">No members</div>
+                  {{/each}}
+                </div>
+              {{/each}}
+            {{/if}}
+          </div>
+
+          {{!-- Right Pane: Member Detail --}}
+          <div class="member-detail">
+            {{#if selectedMember}}
+
+              {{!-- Name header --}}
+              <div class="member-detail-header">
+                <input class="member-name-input"
+                       type="text"
+                       value="{{selectedMember.name}}"
+                       placeholder="Member name…" />
+              </div>
+
+              <div class="member-detail-body">
+
+                {{!-- Faction badge (shown when member belongs to a sub-faction) --}}
+                {{#if selectedMember.currentFactionName}}
+                  <div class="member-detail-row">
+                    <label class="member-detail-label">Faction</label>
+                    <span class="member-faction-badge">
+                      <i class="fa-solid fa-shield-halved"></i> {{selectedMember.currentFactionName}}
+                    </span>
+                  </div>
+                {{/if}}
+
+                {{!-- Rank dropdown (uses ranks from the member's actual faction) --}}
+                <div class="member-detail-row">
+                  <label class="member-detail-label">Rank</label>
+                  <select class="member-rank-select">
+                    <option value="">— None —</option>
+                    {{#each selectedMember.memberRanks}}
+                      <option value="{{id}}" {{#if (eq id ../selectedMember.rankId)}}selected{{/if}}>{{name}}</option>
+                    {{/each}}
+                  </select>
+                </div>
+
+                {{!-- Actor link --}}
+                <div class="member-detail-row">
+                  <label class="member-detail-label">Actor</label>
+                  {{#if selectedMember.actorUuid}}
+                    <div class="member-actor-linked">
+                      <span class="member-actor-name">{{selectedMember.actorName}}</span>
+                      <button type="button" class="icon" data-action="openMemberActor" title="Open actor sheet">
+                        <i class="fa-solid fa-external-link-alt"></i>
+                      </button>
+                      <button type="button" class="icon" data-action="unlinkMemberActor" title="Unlink actor">
+                        <i class="fa-solid fa-link-slash"></i>
+                      </button>
+                    </div>
+                  {{else}}
+                    <button type="button" class="ddf-link-actor-btn" data-action="linkMemberActor">
+                      <i class="fa-solid fa-link"></i> Link Actor
+                    </button>
+                  {{/if}}
+                </div>
+
+                {{!-- Footer: Move + Delete --}}
+                <div class="member-detail-footer">
+                  {{#if selectedMember.hasMoveTargets}}
+                    <button type="button" class="ddf-member-move-btn" data-action="moveMember">
+                      <i class="fa-solid fa-right-left"></i> Move to…
+                    </button>
+                  {{/if}}
+                  <button type="button" class="ddf-member-delete-btn" data-action="deleteMember">
+                    <i class="fa-solid fa-user-minus"></i> Remove
+                  </button>
+                </div>
+
+              </div>
+
+            {{else}}
+              <div class="faction-no-selection">
+                <i class="fa-solid fa-users"></i>
+                <p>Select a member to view details.</p>
+              </div>
+            {{/if}}
+          </div>
+
+        </div>
+      {{else}}
+        <div class="faction-no-selection">
+          <i class="fa-solid fa-shield-halved"></i>
+          <p>Select a faction to view details.</p>
+        </div>
+      {{/if}}
+    </section>
+
+    {{!-- Event Log Tab --}}
+    <section class="tab eventlog {{#if (eq activeTab "eventlog")}}active{{/if}}" data-tab="eventlog">
+      {{#if selectedFaction}}
+        <div class="event-log-header">
+          <h3 class="event-log-title"><i class="fa-solid fa-clock-rotate-left"></i> Event Log</h3>
+          <span class="event-log-count">{{eventLogEntries.length}} events</span>
+        </div>
+        {{#if eventLogEntries.length}}
+          <ul class="event-log-list">
+            {{#each eventLogEntries}}
+              <li class="event-log-entry event-log-cat-{{category}}">
+                <span class="event-log-icon">
+                  {{#if (eq category "member")}}
+                    <i class="fa-solid fa-user"></i>
+                  {{else if (eq category "objective")}}
+                    <i class="fa-solid fa-bullseye"></i>
+                  {{else}}
+                    <i class="fa-solid fa-link"></i>
+                  {{/if}}
+                </span>
+                <span class="event-log-text">{{text}}</span>
+                <span class="event-log-time" title="{{formattedTime}}">{{formattedTime}}</span>
+              </li>
+            {{/each}}
+          </ul>
+        {{else}}
+          <div class="event-log-empty">
+            <i class="fa-solid fa-hourglass-start"></i>
+            <p>No events recorded yet. Changes to members, objectives, and connections will appear here.</p>
+          </div>
+        {{/if}}
+      {{else}}
+        <div class="faction-no-selection">
+          <i class="fa-solid fa-shield-halved"></i>
+          <p>Select a faction to view the event log.</p>
         </div>
       {{/if}}
     </section>

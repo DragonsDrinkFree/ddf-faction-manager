@@ -11,7 +11,7 @@ const SETTING_KEY = "relationships";
  *       id: string,
  *       fromFactionId: string,
  *       direction: "one-way" | "two-way",
- *       type: "faction" | "document" | "simple",
+ *       type: "faction" | "document",
  *       toFactionId?: string,
  *       documentUuid?: string,
  *       documentType?: string,
@@ -40,9 +40,51 @@ export class RelationshipStore {
 
   static getAll() {
     const data = game.settings.get(MODULE_ID, SETTING_KEY) ?? {};
-    if (!data.edges) data.edges = {};
-    if (!data.positions) data.positions = {};
+    if (!data.edges)           data.edges           = {};
+    if (!data.positions)       data.positions        = {};
+    if (!data.pinnedDocuments) data.pinnedDocuments  = {};
+    if (!data.documentSizes)   data.documentSizes    = {};
     return data;
+  }
+
+  /** Returns the documentSizes map keyed by UUID. Values are "small"|"medium"|"large". */
+  static getDocumentSizes() {
+    return this.getAll().documentSizes;
+  }
+
+  /** Persist a document node size preference. */
+  static async setDocumentSize(uuid, size) {
+    const data = this.getAll();
+    data.documentSizes[uuid] = size;
+    await this._save(data);
+  }
+
+  /** Returns the pinnedDocuments map keyed by UUID. */
+  static getPinnedDocuments() {
+    return this.getAll().pinnedDocuments;
+  }
+
+  /**
+   * Adds a document to the map as a free-floating node (no faction edge required).
+   * @param {string} uuid
+   * @param {string} documentType  e.g. "Actor", "JournalEntry", "Scene", "Item", "RollTable"
+   * @param {string} documentName
+   */
+  static async pinDocument(uuid, documentType, documentName) {
+    const data = this.getAll();
+    data.pinnedDocuments[uuid] = { uuid, documentType, documentName };
+    await this._save(data);
+  }
+
+  /**
+   * Removes a document from the pinned set.
+   * The node may still appear on the map if it has faction edges.
+   * @param {string} uuid
+   */
+  static async unpinDocument(uuid) {
+    const data = this.getAll();
+    delete data.pinnedDocuments[uuid];
+    await this._save(data);
   }
 
   static async _save(data, { silent = false } = {}) {
@@ -63,7 +105,9 @@ export class RelationshipStore {
     for (const edge of Object.values(edges)) {
       if (edge.fromFactionId === factionId) {
         result.push({ ...edge });
-      } else if (edge.direction === "two-way" && edge.toFactionId === factionId) {
+      } else if (edge.type === "faction" && edge.toFactionId === factionId) {
+        // Show all faction edges targeting this faction (one-way AND two-way)
+        // so incoming connections are always visible to the target.
         result.push({ ...edge, _reversed: true });
       }
     }
@@ -73,7 +117,7 @@ export class RelationshipStore {
   /**
    * Creates a new relationship edge.
    * @param {string} fromFactionId
-   * @param {"faction"|"document"|"simple"} type
+   * @param {"faction"|"document"} type
    * @param {"one-way"|"two-way"} direction
    * @param {object} opts
    * @param {string} [opts.toFactionId]
@@ -134,6 +178,39 @@ export class RelationshipStore {
   }
 
   /**
+   * Updates the connection type on an edge.
+   * @param {string} id
+   * @param {string|null} connectionTypeId
+   */
+  static async updateEdgeConnectionType(id, connectionTypeId) {
+    const data = this.getAll();
+    if (!data.edges[id]) return;
+    data.edges[id].connectionTypeId = connectionTypeId || null;
+    await this._save(data);
+  }
+
+  /**
+   * Updates the direction on an edge.
+   * When swapParties is true the fromFactionId/toFactionId are also swapped,
+   * used when a reversed edge is made one-way so direction points toward the
+   * faction that performed the action rather than away from it.
+   * @param {string} id
+   * @param {"one-way"|"two-way"} direction
+   * @param {{ swapParties?: boolean }} [opts]
+   */
+  static async updateEdgeDirection(id, direction, { swapParties = false } = {}) {
+    const data = this.getAll();
+    if (!data.edges[id]) return;
+    data.edges[id].direction = direction;
+    if (swapParties) {
+      const { fromFactionId, toFactionId } = data.edges[id];
+      data.edges[id].fromFactionId = toFactionId;
+      data.edges[id].toFactionId   = fromFactionId;
+    }
+    await this._save(data);
+  }
+
+  /**
    * Saves a node position within a faction's relationship view.
    * @param {string} factionId
    * @param {string} nodeKey
@@ -161,6 +238,25 @@ export class RelationshipStore {
    * Called by FactionStore.delete() to keep data consistent.
    * @param {string} factionId
    */
+  /**
+   * Removes a document completely from the map: deletes the pinned entry
+   * and every faction→document edge referencing this UUID.
+   * @param {string} uuid
+   */
+  static async removeDocumentFromMap(uuid) {
+    const data = this.getAll();
+    delete data.pinnedDocuments[uuid];
+    for (const id of Object.keys(data.edges)) {
+      const e = data.edges[id];
+      if (e.type === "document" && e.documentUuid === uuid) {
+        delete data.edges[id];
+      } else if (e.type === "doc-link" && (e.documentUuid === uuid || e.fromDocUuid === uuid)) {
+        delete data.edges[id];
+      }
+    }
+    await this._save(data);
+  }
+
   static async cleanupFaction(factionId) {
     const data = this.getAll();
     for (const id of Object.keys(data.edges)) {
