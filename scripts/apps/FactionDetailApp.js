@@ -66,7 +66,14 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
       openMemberActor:   FactionDetailApp.#onOpenMemberActor,
       unlinkMemberActor: FactionDetailApp.#onUnlinkMemberActor,
       linkMemberActor:   FactionDetailApp.#onLinkMemberActor,
-      moveMember:        FactionDetailApp.#onMoveMember
+      moveMember:        FactionDetailApp.#onMoveMember,
+      editObjective:     FactionDetailApp.#onEditObjective,
+      addTag:            FactionDetailApp.#onAddTag,
+      deleteTag:         FactionDetailApp.#onDeleteTag,
+      addSecret:         FactionDetailApp.#onAddSecret,
+      deleteSecret:      FactionDetailApp.#onDeleteSecret,
+      addRumor:          FactionDetailApp.#onAddRumor,
+      deleteRumor:       FactionDetailApp.#onDeleteRumor
     }
   };
 
@@ -174,6 +181,13 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
     context.subFactionSections  = memberCtx.subFactionSections;
     context.selectedMemberId    = this.#selectedMemberId;
     context.selectedMember      = await this.#buildSelectedMemberContext();
+
+    // Tags, secrets, rumors (Overview tab)
+    const sf = context.selectedFaction;
+    context.factionTags = sf?.tags ?? [];
+    context.allTags     = FactionStore.getAllTags();
+    context.secrets     = sf?.secrets ?? [];
+    context.rumors      = sf?.rumors  ?? [];
 
     // Event Log tab
     context.eventLogEntries = this.#selectedFactionId
@@ -451,21 +465,28 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
     return tmp.innerHTML;
   }
 
-  static #quarterBars(progress) {
+  /** Convert filled/sections into 4 quarter-bar descriptors for list display. */
+  static #quarterBars(filled, sections) {
+    const pct = sections > 0 ? (filled / sections) * 100 : 0;
     return [0, 1, 2, 3].map(i => {
       const low  = i * 25;
       const high = low + 25;
-      if (progress >= high) return { filled: true,  partial: 100 };
-      if (progress <= low)  return { filled: false, partial: 0 };
-      return { filled: false, partial: Math.round((progress - low) / 25 * 100) };
+      if (pct >= high) return { filled: true,  partial: 100 };
+      if (pct <= low)  return { filled: false, partial: 0 };
+      return { filled: false, partial: Math.round((pct - low) / 25 * 100) };
     });
   }
 
   #buildProjectContext() {
     if (!this.#selectedFactionId) return { active: [], finished: [] };
-    const all      = ProjectStore.getForFaction(this.#selectedFactionId);
-    const decorate = p => ({ ...p, quarterBars: FactionDetailApp.#quarterBars(p.progress) });
-    const sort     = arr => arr.sort((a, b) => a.name.localeCompare(b.name)).map(decorate);
+    const all = ProjectStore.getForFaction(this.#selectedFactionId);
+    const decorate = p => {
+      // Legacy support: projects with old progress (0-100) field treated as 4-pip tracks
+      const sections = p.sections ?? 4;
+      const filled   = p.filled   ?? Math.round((p.progress ?? 0) / 25);
+      return { ...p, sections, filled, quarterBars: FactionDetailApp.#quarterBars(filled, sections) };
+    };
+    const sort = arr => arr.sort((a, b) => a.name.localeCompare(b.name)).map(decorate);
     return {
       active:   sort(all.filter(p => p.status === "active")),
       finished: sort(all.filter(p => p.status === "finished"))
@@ -477,14 +498,19 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
     const project = ProjectStore.getAll()[this.#selectedProjectId];
     if (!project) return null;
 
+    const sections = project.sections ?? 4;
+    const filled   = project.filled   ?? Math.round((project.progress ?? 0) / 25);
+
     const notes = [...project.notes].reverse().map(n => ({
       ...n,
       formattedDate:  new Date(n.timestamp).toLocaleString(),
-      formattedDelta: n.progressDelta > 0 ? `+${n.progressDelta}%` : `${n.progressDelta}%`,
-      deltaClass:     n.progressDelta > 0 ? "positive" : n.progressDelta < 0 ? "negative" : "neutral"
+      formattedDelta: n.progressDelta !== 0
+        ? `${n.progressDelta > 0 ? "+" : ""}${n.progressDelta}`
+        : "—",
+      deltaClass: n.progressDelta > 0 ? "positive" : n.progressDelta < 0 ? "negative" : "neutral"
     }));
 
-    return { ...project, notes };
+    return { ...project, sections, filled, notes };
   }
 
   async #buildMembersContext() {
@@ -587,6 +613,42 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
     });
   }
 
+  static #promptObjective(title, existing = null) {
+    return new Promise(resolve => {
+      const defaultSections = existing?.sections ?? 8;
+      foundry.applications.api.DialogV2.prompt({
+        window: { title },
+        content: `
+          <div class="standard-form">
+            <div class="form-group">
+              <label>Name</label>
+              <div class="form-fields">
+                <input type="text" name="obj_name" autofocus
+                       value="${foundry.utils.escapeHTML(existing?.name ?? "")}"
+                       placeholder="Objective name…" />
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Required Progress</label>
+              <div class="form-fields">
+                <input type="number" name="obj_sections"
+                       value="${defaultSections}" min="1" max="99" style="width:80px;" />
+              </div>
+            </div>
+          </div>`,
+        ok: {
+          label: existing ? "Save" : "Create",
+          callback: (_event, button) => {
+            const name     = button.form.elements.obj_name.value.trim();
+            const sections = parseInt(button.form.elements.obj_sections.value) || 8;
+            resolve(name ? { name, sections } : null);
+          }
+        },
+        rejectClose: false
+      }).catch(() => resolve(null));
+    });
+  }
+
   // ─── Action Handlers ─────────────────────────────────────────────────────────
 
   static #onOpenJournal(_event, _target) {
@@ -604,12 +666,23 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
 
   static async #onCreateProject(_event, _target) {
     if (!this.#selectedFactionId) return;
-    const name = await FactionDetailApp.#promptName("New Objective", "Name");
-    if (!name) return;
-    const project = await ProjectStore.create(this.#selectedFactionId, name);
+    const result = await FactionDetailApp.#promptObjective("New Objective");
+    if (!result) return;
+    const project = await ProjectStore.create(this.#selectedFactionId, result.name, result.sections);
     this.#selectedProjectId = project.id;
     await this.#logEvent("objective", `Objective created: ${project.name}`, "scmObjectiveCreated");
     this.render();
+  }
+
+  static async #onEditObjective(_event, _target) {
+    if (!this.#selectedProjectId) return;
+    const project = ProjectStore.getAll()[this.#selectedProjectId];
+    if (!project) return;
+    const result = await FactionDetailApp.#promptObjective("Edit Objective", project);
+    if (!result) return;
+    const newFilled = Math.min(project.filled ?? 0, result.sections);
+    await ProjectStore.update(this.#selectedProjectId, { name: result.name, sections: result.sections, filled: newFilled });
+    this.render({ parts: ["content"] });
   }
 
   static #onSelectProject(_event, target) {
@@ -1409,6 +1482,155 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
     setTimeout(() => document.addEventListener("mousedown", handler, true), 50);
 
     input.focus();
+  }
+
+  // ─── Tag Actions ─────────────────────────────────────────────────────────────
+
+  static #onAddTag(_event, target) {
+    if (!this.#selectedFactionId) return;
+    this.#showTagAddPanel(target);
+  }
+
+  static async #onDeleteTag(_event, target) {
+    const tag = target.dataset.tag;
+    if (!tag || !this.#selectedFactionId) return;
+    const faction = FactionStore.getAll()[this.#selectedFactionId];
+    if (!faction) return;
+    const tags = (faction.tags ?? []).filter(t => t !== tag);
+    await FactionStore.update(this.#selectedFactionId, { tags });
+    this.render({ parts: ["content"] });
+  }
+
+  #showTagAddPanel(triggerEl) {
+    document.querySelectorAll(".ddf-tag-panel").forEach(el => el.remove());
+
+    const factionId   = this.#selectedFactionId;
+    const faction     = FactionStore.getAll()[factionId];
+    const currentTags = new Set(faction?.tags ?? []);
+    const allTags     = FactionStore.getAllTags().filter(t => !currentTags.has(t));
+
+    const btnRect  = triggerEl.getBoundingClientRect();
+    const PANEL_W  = 220;
+    const GAP      = 6;
+
+    const panel = document.createElement("div");
+    panel.className      = "mm-search-panel ddf-tag-panel";
+    panel.style.position = "fixed";
+    panel.style.zIndex   = "10000";
+    panel.style.left     = `${Math.min(btnRect.left, window.innerWidth - PANEL_W - GAP)}px`;
+    panel.style.top      = `${btnRect.bottom + GAP}px`;
+
+    panel.innerHTML = `
+      <div class="mm-panel-title">Add Tag</div>
+      <input type="text" class="mm-search-input ddf-tag-input" placeholder="Type or search tags…" autofocus />
+      <div class="mm-search-results ddf-tag-list">
+        ${allTags.length
+          ? allTags.map(t => `<div class="mm-search-result" data-tag="${foundry.utils.escapeHTML(t)}">${foundry.utils.escapeHTML(t)}</div>`).join("")
+          : "<div class='mm-search-empty'>No existing tags — type to create one</div>"
+        }
+      </div>
+    `;
+
+    const input   = panel.querySelector(".mm-search-input");
+    const results = panel.querySelector(".mm-search-results");
+
+    input.addEventListener("input", () => {
+      const q = input.value.toLowerCase();
+      results.querySelectorAll(".mm-search-result").forEach(el => {
+        el.style.display = el.dataset.tag.toLowerCase().includes(q) ? "" : "none";
+      });
+    });
+
+    const addTag = async (tag) => {
+      tag = tag.trim();
+      if (!tag) return;
+      const f = FactionStore.getAll()[factionId];
+      if (!f) return;
+      const tags = [...new Set([...(f.tags ?? []), tag])];
+      await FactionStore.update(factionId, { tags });
+      panel.remove();
+      this.render({ parts: ["content"] });
+    };
+
+    results.addEventListener("click", async (e) => {
+      const el = e.target.closest(".mm-search-result");
+      if (el) await addTag(el.dataset.tag);
+    });
+
+    input.addEventListener("keydown", async (e) => {
+      if (e.key === "Enter") { e.preventDefault(); await addTag(input.value); }
+      if (e.key === "Escape") panel.remove();
+    });
+
+    document.body.appendChild(panel);
+
+    const handler = (e) => {
+      if (!panel.contains(e.target)) {
+        panel.remove();
+        document.removeEventListener("mousedown", handler, true);
+      }
+    };
+    setTimeout(() => document.addEventListener("mousedown", handler, true), 50);
+    input.focus();
+  }
+
+  // ─── Secrets / Rumors Actions ─────────────────────────────────────────────────
+  // TODO: Future refactor — consider richer entry types (visibility toggle, source attribution,
+  //   PC-knowledge tracking). For now this is deliberately minimal: plain text, add/delete only.
+
+  static async #onAddSecret(_event, _target) {
+    if (!this.#selectedFactionId) return;
+    const text = await FactionDetailApp.#promptSingleText("Add Secret", "Secret");
+    if (!text) return;
+    const faction  = FactionStore.getAll()[this.#selectedFactionId];
+    const secrets  = [...(faction?.secrets ?? []), { id: foundry.utils.randomID(), text }];
+    await FactionStore.update(this.#selectedFactionId, { secrets });
+    this.render({ parts: ["content"] });
+  }
+
+  static async #onDeleteSecret(_event, target) {
+    const id = target.dataset.secretId;
+    if (!id || !this.#selectedFactionId) return;
+    const faction = FactionStore.getAll()[this.#selectedFactionId];
+    const secrets = (faction?.secrets ?? []).filter(s => s.id !== id);
+    await FactionStore.update(this.#selectedFactionId, { secrets });
+    this.render({ parts: ["content"] });
+  }
+
+  static async #onAddRumor(_event, _target) {
+    if (!this.#selectedFactionId) return;
+    const text = await FactionDetailApp.#promptSingleText("Add Rumor", "Rumor");
+    if (!text) return;
+    const faction = FactionStore.getAll()[this.#selectedFactionId];
+    const rumors  = [...(faction?.rumors ?? []), { id: foundry.utils.randomID(), text }];
+    await FactionStore.update(this.#selectedFactionId, { rumors });
+    this.render({ parts: ["content"] });
+  }
+
+  static async #onDeleteRumor(_event, target) {
+    const id = target.dataset.rumorId;
+    if (!id || !this.#selectedFactionId) return;
+    const faction = FactionStore.getAll()[this.#selectedFactionId];
+    const rumors  = (faction?.rumors ?? []).filter(r => r.id !== id);
+    await FactionStore.update(this.#selectedFactionId, { rumors });
+    this.render({ parts: ["content"] });
+  }
+
+  static #promptSingleText(title, label) {
+    return new Promise(resolve => {
+      foundry.applications.api.DialogV2.prompt({
+        window: { title },
+        content: `<div class="standard-form"><div class="form-group"><label>${label}</label><div class="form-fields"><textarea name="entry_text" rows="3" autofocus placeholder="${label}…"></textarea></div></div></div>`,
+        ok: {
+          label: "Add",
+          callback: (_event, button) => {
+            const value = button.form.elements.entry_text.value.trim();
+            resolve(value || null);
+          }
+        },
+        rejectClose: false
+      }).catch(() => resolve(null));
+    });
   }
 
   // ─── Rank Prompt Dialog ───────────────────────────────────────────────────────

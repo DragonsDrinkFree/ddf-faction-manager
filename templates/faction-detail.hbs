@@ -24,6 +24,21 @@
           </button>
         </div>
 
+        {{!-- Tags bar --}}
+        <div class="faction-tags-bar">
+          {{#each factionTags}}
+            <span class="ddf-tag">
+              <span class="ddf-tag-label">{{this}}</span>
+              <button type="button" class="ddf-tag-remove icon" data-action="deleteTag" data-tag="{{this}}" title="Remove tag">
+                <i class="fa-solid fa-xmark"></i>
+              </button>
+            </span>
+          {{/each}}
+          <button type="button" class="ddf-tag-add icon" data-action="addTag" title="Add tag">
+            <i class="fa-solid fa-tag"></i><i class="fa-solid fa-plus fa-2xs"></i>
+          </button>
+        </div>
+
         {{!-- Full-width stats bar --}}
         {{#if statDefinitions.length}}
         <div class="faction-stats-bar">
@@ -109,6 +124,52 @@
           </div>
 
         </div>
+
+        {{!-- Secrets & Rumors panel --}}
+        {{!-- TODO: future refactor — add visibility toggles, source attribution, PC-knowledge tracking --}}
+        <div class="faction-intel-section">
+          <div class="faction-intel-col">
+            <div class="faction-intel-header">
+              <span><i class="fa-solid fa-user-secret"></i> Secrets</span>
+              <button type="button" class="icon" data-action="addSecret" title="Add secret">
+                <i class="fa-solid fa-plus"></i>
+              </button>
+            </div>
+            <ul class="faction-intel-list">
+              {{#each secrets}}
+                <li class="faction-intel-item" data-secret-id="{{id}}">
+                  <span class="faction-intel-text">{{text}}</span>
+                  <button type="button" class="faction-intel-delete icon" data-action="deleteSecret" data-secret-id="{{id}}" title="Remove">
+                    <i class="fa-solid fa-xmark"></i>
+                  </button>
+                </li>
+              {{else}}
+                <li class="faction-intel-empty">None recorded.</li>
+              {{/each}}
+            </ul>
+          </div>
+          <div class="faction-intel-col">
+            <div class="faction-intel-header">
+              <span><i class="fa-solid fa-comments"></i> Rumors</span>
+              <button type="button" class="icon" data-action="addRumor" title="Add rumor">
+                <i class="fa-solid fa-plus"></i>
+              </button>
+            </div>
+            <ul class="faction-intel-list">
+              {{#each rumors}}
+                <li class="faction-intel-item" data-rumor-id="{{id}}">
+                  <span class="faction-intel-text">{{text}}</span>
+                  <button type="button" class="faction-intel-delete icon" data-action="deleteRumor" data-rumor-id="{{id}}" title="Remove">
+                    <i class="fa-solid fa-xmark"></i>
+                  </button>
+                </li>
+              {{else}}
+                <li class="faction-intel-empty">None recorded.</li>
+              {{/each}}
+            </ul>
+          </div>
+        </div>
+
       {{else}}
         <div class="faction-no-selection">
           <i class="fa-solid fa-shield-halved"></i>
@@ -183,9 +244,14 @@
             {{#if selectedProject}}
 
               <div class="project-detail-header">
-                <h3>{{selectedProject.name}}</h3>
+                <div class="project-name-row">
+                  <h3>{{selectedProject.name}}</h3>
+                  <button type="button" class="icon" data-action="editObjective" title="Edit name / required progress">
+                    <i class="fa-solid fa-pen"></i>
+                  </button>
+                </div>
                 <div class="project-header-actions">
-                  <span class="project-progress-value">{{selectedProject.progress}}%</span>
+                  <span class="project-progress-value">{{selectedProject.filled}}/{{selectedProject.sections}}</span>
                   {{#if (eq selectedProject.status "active")}}
                     <button type="button" data-action="finishProject">
                       <i class="fa-solid fa-flag-checkered"></i> Finish
@@ -249,11 +315,11 @@
                     {{/if}}
                   </div>
                   <div class="note-draft-presets ddf-note-presets">
-                    <label class="ddf-preset-btn"><input type="radio" name="note_preset" value="10">+10%</label>
-                    <label class="ddf-preset-btn"><input type="radio" name="note_preset" value="25">+25%</label>
-                    <label class="ddf-preset-btn"><input type="radio" name="note_preset" value="50">+50%</label>
+                    <label class="ddf-preset-btn"><input type="radio" name="note_preset" value="1">+1</label>
+                    <label class="ddf-preset-btn"><input type="radio" name="note_preset" value="2">+2</label>
+                    <label class="ddf-preset-btn"><input type="radio" name="note_preset" value="3">+3</label>
                     <input type="number" name="note_custom" class="ddf-delta-custom"
-                      placeholder="Custom %" min="-100" max="100" />
+                      placeholder="Progress" min="-99" max="99" />
                     <button type="button" class="note-draft-save" data-action="saveInlineNote">
                       <i class="fa-solid fa-floppy-disk"></i> Save
                     </button>

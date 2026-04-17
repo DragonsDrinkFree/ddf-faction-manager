@@ -2174,7 +2174,8 @@
 .ddf-global-relationships .mm-search-panel {
   position: absolute;
   z-index: 200;
-  background: var(--color-bg-sheet);
+  background: var(--color-bg-sheet, #1e2030);
+  background-color: #1e2030;
   border: 1px solid var(--color-border-primary);
   border-radius: 4px;
   padding: 8px;
@@ -2186,7 +2187,8 @@
 .ddf-global-relationships .mm-node-menu {
   position: absolute;
   z-index: 200;
-  background: var(--color-bg-sheet);
+  background: var(--color-bg-sheet, #1e2030);
+  background-color: #1e2030;
   border: 1px solid var(--color-border-primary);
   border-radius: 4px;
   overflow: hidden;
@@ -3371,6 +3373,209 @@
 .ddf-faction-detail .event-log-empty i {
   font-size: 2rem;
   opacity: 0.4;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   FACTION TAGS
+   ═══════════════════════════════════════════════════════════════════ */
+
+.ddf-faction-detail .faction-tags-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 12px 6px;
+}
+
+.ddf-faction-detail .ddf-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px 2px 9px;
+  background: rgba(124, 111, 87, 0.18);
+  border: 1px solid rgba(124, 111, 87, 0.35);
+  border-radius: 12px;
+  font-size: 0.75rem;
+  color: var(--color-text-primary);
+}
+
+.ddf-faction-detail .ddf-tag-label {
+  line-height: 1;
+}
+
+.ddf-faction-detail .ddf-tag-remove {
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.6rem;
+  opacity: 0;
+  transition: opacity 0.15s;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+.ddf-faction-detail .ddf-tag:hover .ddf-tag-remove {
+  opacity: 0.7;
+}
+
+.ddf-faction-detail .ddf-tag-remove:hover {
+  opacity: 1 !important;
+}
+
+.ddf-faction-detail .ddf-tag-add {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  font-size: 0.7rem;
+  opacity: 0.5;
+  border: 1px dashed currentColor;
+  border-radius: 12px;
+  background: none;
+  cursor: pointer;
+  padding: 0 5px;
+  transition: opacity 0.15s;
+}
+
+.ddf-faction-detail .ddf-tag-add:hover {
+  opacity: 1;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   OBJECTIVE PROGRESS TRACK
+   ═══════════════════════════════════════════════════════════════════ */
+
+.ddf-faction-detail .obj-progress-track {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.ddf-faction-detail .obj-progress-pip {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  border: 1px solid rgba(255,255,255,0.2);
+  background: rgba(255,255,255,0.08);
+  transition: background 0.15s;
+}
+
+.ddf-faction-detail .obj-progress-pip.filled {
+  background: var(--color-border-highlight, #7c6f57);
+  border-color: var(--color-border-highlight, #7c6f57);
+}
+
+.ddf-faction-detail .obj-progress-pip.finished.filled {
+  background: #5a8a5a;
+  border-color: #5a8a5a;
+}
+
+.ddf-faction-detail .project-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.ddf-faction-detail .project-name-row h3 {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   SECRETS & RUMORS PANEL
+   ═══════════════════════════════════════════════════════════════════ */
+
+.ddf-faction-detail .faction-intel-section {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding: 8px 12px 10px;
+  border-top: 1px solid var(--color-border-light-primary);
+  margin-top: 8px;
+}
+
+.ddf-faction-detail .faction-intel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.75;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  margin-bottom: 4px;
+}
+
+.ddf-faction-detail .faction-intel-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ddf-faction-detail .faction-intel-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  background: rgba(0,0,0,0.12);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.ddf-faction-detail .faction-intel-text {
+  flex: 1;
+  word-break: break-word;
+}
+
+.ddf-faction-detail .faction-intel-delete {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+  opacity: 0;
+  transition: opacity 0.15s;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 0;
+  margin-top: 1px;
+}
+
+.ddf-faction-detail .faction-intel-item:hover .faction-intel-delete {
+  opacity: 0.6;
+}
+
+.ddf-faction-detail .faction-intel-delete:hover {
+  opacity: 1 !important;
+}
+
+.ddf-faction-detail .faction-intel-empty {
+  font-size: 0.78rem;
+  font-style: italic;
+  opacity: 0.45;
+  padding: 2px 4px;
 }
 
 /* ═══════════════════════════════════════════════════════════════════

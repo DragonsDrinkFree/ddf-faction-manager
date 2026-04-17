@@ -19,3 +19,11 @@ Log of members being added/subtracted/ Objectives, Relationships. General notes.
 # Campaign Manager link
 Dump into session notes
 
+
+# PC Disposition Track
+Per-faction relationship axis representing how a faction feels about the player characters.
+Separate from inter-faction relationships.
+Simple tiered label (e.g. Hostile → Unfriendly → Neutral → Friendly → Devoted) or a slider.
+Changes frequently during play and is easy for GMs to lose track of.
+Needs planning — consider: per-PC vs per-party disposition, display on relationship map, event log integration.
+

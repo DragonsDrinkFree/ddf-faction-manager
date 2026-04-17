@@ -76,6 +76,18 @@ export class FactionStore {
     return journal;
   }
 
+  /**
+   * Returns every unique tag used across all factions, sorted alphabetically.
+   * @returns {string[]}
+   */
+  static getAllTags() {
+    const tagSet = new Set();
+    for (const faction of Object.values(this.getAll())) {
+      for (const tag of (faction.tags ?? [])) tagSet.add(tag);
+    }
+    return [...tagSet].sort((a, b) => a.localeCompare(b));
+  }
+
   // ─── Hierarchy ───────────────────────────────────────────────────────────────
 
   /**
@@ -138,7 +150,7 @@ export class FactionStore {
       }
     } catch { /* leave stats empty */ }
 
-    const faction = { id, name, parentId, pageId: pages[0].id, stats };
+    const faction = { id, name, parentId, pageId: pages[0].id, stats, tags: [], secrets: [], rumors: [] };
     const all = this.getAll();
     all[id] = faction;
     await this._save(all);
