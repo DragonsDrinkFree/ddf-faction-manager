@@ -151,6 +151,7 @@ Hooks.once("init", async () => {
   await loadTemplates([
     `modules/${MODULE_ID}/templates/sidebar-tab.hbs`,
     `modules/${MODULE_ID}/templates/faction-detail.hbs`,
+    `modules/${MODULE_ID}/templates/party-detail.hbs`,
     `modules/${MODULE_ID}/templates/global-relationships.hbs`,
     `modules/${MODULE_ID}/templates/partials/faction-item.hbs`
   ]);
@@ -176,6 +177,30 @@ Hooks.once("ready", () => {
     event.preventDefault();
     event.stopPropagation();
     FactionDetailApp.show(link.dataset.factionId);
+  }, true);
+
+  // Re-render the faction sidebar tab whenever the user clicks/activates it.
+  // This forces a fresh sandbox-import check (in case SCM loaded after us) and
+  // refreshes active-party gold styling + sort order when the GM has switched
+  // active parties in SCM since the last render.
+  const refreshFactionTab = () => {
+    const tab = ui.sidebar?.tabs?.ddfFactions;
+    if (tab?.rendered) tab.render({ force: true });
+  };
+
+  // Foundry's documented hook for tab activation
+  Hooks.on("changeSidebarTab", (arg) => {
+    const tabName = typeof arg === "string" ? arg : (arg?.tabName ?? arg?.id ?? null);
+    if (tabName === "ddfFactions") refreshFactionTab();
+  });
+
+  // Belt-and-suspenders: catch the click directly on the sidebar nav button.
+  // Defer to a microtask so Foundry has finished switching the active tab
+  // before we trigger the re-render.
+  document.addEventListener("click", (event) => {
+    const btn = event.target.closest('[data-tab="ddfFactions"], [data-action="tab"][data-tab="ddfFactions"]');
+    if (!btn) return;
+    Promise.resolve().then(refreshFactionTab);
   }, true);
 });
 

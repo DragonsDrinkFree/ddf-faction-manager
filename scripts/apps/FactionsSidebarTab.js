@@ -4,8 +4,15 @@ import { ProjectStore } from "../data/ProjectStore.js";
 import { RelationshipStore } from "../data/RelationshipStore.js";
 import { MemberStore } from "../data/MemberStore.js";
 import { FactionDetailApp } from "./FactionDetailApp.js";
+import { PartyDetailApp } from "./PartyDetailApp.js";
 import { FolderConfigApp } from "./FolderConfigApp.js";
 import { GlobalRelationshipsApp } from "./GlobalRelationshipsApp.js";
+import {
+  getActiveSandboxPartyId,
+  getMissingSandboxParties,
+  importSandboxParty,
+  syncAllSandboxPartyMembers
+} from "../utils/SandboxIntegration.js";
 
 const { HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -33,6 +40,16 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
   /** Faction ID currently being dragged (manual mode). */
   #draggedId = null;
 
+  /**
+   * Comma-joined sorted list of sandbox party IDs the user has dismissed this
+   * session. The prompt re-fires whenever the current missing-set differs from
+   * this signature — so newly-appeared SCM parties still surface for import.
+   */
+  #sandboxDismissedIds = null;
+
+  /** Set true while the import dialog is open, to prevent duplicates on re-render. */
+  #sandboxPromptOpen = false;
+
   // ─── Context ─────────────────────────────────────────────────────────────────
 
   /** @override */
@@ -44,8 +61,23 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
     const membership  = FolderStore.getMembership();
     const manualOrder = FolderStore.getManualOrder();
 
+    // Identify the active sandbox party (matches a stored faction by sandboxPartyId)
+    const activeSandboxPartyId = getActiveSandboxPartyId();
+    const activeFactionId = activeSandboxPartyId
+      ? Object.values(FactionStore.getAll())
+          .find(f => f.kind === "party" && f.sandboxPartyId === activeSandboxPartyId)?.id ?? null
+      : null;
+
+    // Decorator added to every faction record before it goes to the template
+    const decorate = (f) => ({
+      ...f,
+      isParty:        f.kind === "party",
+      isActiveParty:  f.id   === activeFactionId,
+      children:       (f.children ?? []).map(decorate)
+    });
+
     // getHierarchy() returns top-level roots alpha-sorted, each with .children
-    const hierarchyRoots = FactionStore.getHierarchy();
+    const hierarchyRoots = FactionStore.getHierarchy().map(decorate);
 
     // ── Step 1: group top-level factions by folder (preserving alpha order from getHierarchy) ──
     const folderGroups   = {};
@@ -86,7 +118,12 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
     }
 
     // Unfiled factions use the global sidebar sort toggle
-    const unfiledSorted = sortMode === "manual" ? manualSort(unfiledFactions) : unfiledFactions;
+    let unfiledSorted = sortMode === "manual" ? manualSort(unfiledFactions) : unfiledFactions;
+    // Hoist the active sandbox party to the top regardless of sort mode
+    if (activeFactionId) {
+      const idx = unfiledSorted.findIndex(f => f.id === activeFactionId);
+      if (idx > 0) unfiledSorted = [unfiledSorted[idx], ...unfiledSorted.slice(0, idx), ...unfiledSorted.slice(idx + 1)];
+    }
     sections.push({ type: "unfiled", factions: unfiledSorted });
 
     context.sections   = sections;
@@ -105,9 +142,9 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
 
     // ── Header buttons ───────────────────────────────────────────────────────
     el.querySelector(".ddf-create-faction")?.addEventListener("click", async () => {
-      const name = await this.#promptName("New Faction", "Name");
-      if (!name) return;
-      await FactionStore.create(name, null);
+      const result = await this.#promptCreateOrganization();
+      if (!result) return;
+      await FactionStore.create(result.name, null, { kind: result.kind });
       this.render();
     });
 
@@ -146,7 +183,10 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
     el.querySelectorAll("[data-action='selectFaction']").forEach(row => {
       row.addEventListener("click", () => {
         const id = row.closest("[data-faction-id]")?.dataset.factionId;
-        if (id) FactionDetailApp.show(id);
+        if (!id) return;
+        const record = FactionStore.getAll()[id];
+        if (record?.kind === "party") PartyDetailApp.show(id);
+        else                          FactionDetailApp.show(id);
       });
     });
 
@@ -287,6 +327,82 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
 
     // ── Drag-drop: always set up — each section controls its own draggability ──
     this.#setupDragDrop(el);
+
+    // ── Sandbox Campaign Manager sync ─────────────────────────────────────────
+    // Reconcile rosters of any sandbox-linked parties, then prompt to import
+    // any sandbox parties that don't yet exist in our store.
+    this.#runSandboxCheck();
+  }
+
+  /**
+   * Fire-and-forget: sync existing sandbox-linked parties, then offer to
+   * import any new ones. Silent when SCM is unavailable or there's nothing to do.
+   */
+  async #runSandboxCheck() {
+    try {
+      await syncAllSandboxPartyMembers();
+      if (this.#sandboxPromptOpen) return;
+      const missing = getMissingSandboxParties();
+      if (!missing.length) return;
+      const signature = missing.map(p => p.id).sort().join(",");
+      if (this.#sandboxDismissedIds === signature) return;
+      this.#showSandboxImportDialog(missing, signature);
+    } catch (err) {
+      console.warn("ddf-faction-manager | Sandbox sync failed", err);
+    }
+  }
+
+  #showSandboxImportDialog(missingParties, signature) {
+    const rows = missingParties.map(p => {
+      const memberCount = Array.isArray(p.members) ? p.members.length : 0;
+      const memberWord  = memberCount === 1 ? "member" : "members";
+      return `
+        <label class="ddf-import-party-row">
+          <input type="checkbox" name="sbp_${p.id}" value="${p.id}" checked />
+          <strong>${foundry.utils.escapeHTML(p.name)}</strong>
+          <span class="hint">— ${memberCount} ${memberWord}</span>
+        </label>`;
+    }).join("");
+
+    this.#sandboxPromptOpen = true;
+    foundry.applications.api.DialogV2.wait({
+      window: { title: "Import Sandbox Parties" },
+      content: `
+        <div class="standard-form">
+          <p>Sandbox Campaign Manager has parties that don't exist in your faction manager. Select which to import — members will be auto-linked to actors.</p>
+          <div class="ddf-import-party-list">${rows}</div>
+        </div>`,
+      buttons: [
+        {
+          label: "Import Selected",
+          action: "import",
+          icon: "fa-solid fa-download",
+          default: true,
+          callback: (_event, button) => {
+            const ids = [];
+            button.form.querySelectorAll('input[type="checkbox"]:checked').forEach(cb => ids.push(cb.value));
+            return ids;
+          }
+        },
+        { label: "Skip", action: "skip" }
+      ],
+      rejectClose: false
+    }).then(async (result) => {
+      this.#sandboxPromptOpen = false;
+      if (!Array.isArray(result) || !result.length) {
+        this.#sandboxDismissedIds = signature;
+        return;
+      }
+      const byId = new Map(missingParties.map(p => [p.id, p]));
+      for (const id of result) {
+        const sandboxParty = byId.get(id);
+        if (sandboxParty) await importSandboxParty(sandboxParty);
+      }
+      this.render();
+    }).catch(() => {
+      this.#sandboxPromptOpen   = false;
+      this.#sandboxDismissedIds = signature;
+    });
   }
 
   // ─── Drag-Drop ───────────────────────────────────────────────────────────────
@@ -462,6 +578,41 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
         ok: {
           label: "Create",
           callback: (_event, button) => resolve(button.form.elements.name.value.trim() || null)
+        },
+        rejectClose: false
+      }).catch(() => resolve(null));
+    });
+  }
+
+  #promptCreateOrganization() {
+    return new Promise(resolve => {
+      foundry.applications.api.DialogV2.prompt({
+        window: { title: "New Organization" },
+        content: `
+          <div class="standard-form">
+            <div class="form-group">
+              <label>Type</label>
+              <div class="form-fields">
+                <select name="kind">
+                  <option value="faction" selected>Faction</option>
+                  <option value="party">Adventuring Party</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Name</label>
+              <div class="form-fields">
+                <input type="text" name="name" autofocus placeholder="Name…" />
+              </div>
+            </div>
+          </div>`,
+        ok: {
+          label: "Create",
+          callback: (_event, button) => {
+            const name = button.form.elements.name.value.trim();
+            const kind = button.form.elements.kind.value;
+            resolve(name ? { name, kind } : null);
+          }
         },
         rejectClose: false
       }).catch(() => resolve(null));

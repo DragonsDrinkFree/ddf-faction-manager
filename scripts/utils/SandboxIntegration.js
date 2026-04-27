@@ -1,8 +1,16 @@
+import { FactionStore } from "../data/FactionStore.js";
+
 /**
  * Soft integration with the Sandbox Campaign Manager module.
  * All calls are no-ops when the module is absent or has no active session.
  * Never throws.
  */
+
+/** Returns the SCM API or null. */
+function getScm() {
+  try { return game.modules.get("sandbox-campaign-manager")?.api ?? null; }
+  catch { return null; }
+}
 
 /**
  * Attempt to add a note to the current Sandbox Campaign Manager session.
@@ -21,4 +29,121 @@ export async function tryAddSessionNote(text, factionName, settingKey = null) {
     if (!scm) return;
     await scm.addSessionNote({ text, tags: ["Faction", factionName] });
   } catch { /* no active session, or module unavailable */ }
+}
+
+/** Returns the active Sandbox party ID, or null if SCM is missing/no active party. */
+export function getActiveSandboxPartyId() {
+  try {
+    return getScm()?.getActivePartyId?.() || null;
+  } catch { return null; }
+}
+
+/**
+ * Read all parties from SCM (or empty object if absent).
+ * The shape is `{ [partyId]: { id, name, members, ... } }`.
+ */
+function getAllSandboxParties() {
+  try { return getScm()?.getParties?.() ?? {}; }
+  catch { return {}; }
+}
+
+/**
+ * Pull an actor UUID from a sandbox member entry. SCM's `members` array can
+ * be either bare UUID strings or objects (the API reference is light here),
+ * so we accept both.
+ */
+function readMemberActorUuid(m) {
+  if (typeof m === "string") return m;
+  return m?.actorUuid ?? m?.uuid ?? m?.actor?.uuid ?? null;
+}
+
+/**
+ * Returns SCM parties that don't yet have a matching record in our FactionStore
+ * (matched by `sandboxPartyId`). Empty array if SCM is absent.
+ */
+export function getMissingSandboxParties() {
+  const sandboxParties = getAllSandboxParties();
+  if (!Object.keys(sandboxParties).length) return [];
+  const ourSandboxIds = new Set(
+    Object.values(FactionStore.getAll())
+      .filter(f => f.kind === "party" && f.sandboxPartyId)
+      .map(f => f.sandboxPartyId)
+  );
+  return Object.values(sandboxParties).filter(p => p?.id && !ourSandboxIds.has(p.id));
+}
+
+/**
+ * Reconcile a single party's auto-managed members with its matching SCM party.
+ * - Adds new sandbox members not yet present (marked source: "sandbox")
+ * - Removes our sandbox-sourced members that are no longer in the SCM list
+ * - Manually-added members are untouched
+ *
+ * No-op if SCM is missing, the faction isn't a sandbox-linked party, or
+ * nothing changed (idempotent).
+ */
+export async function syncSandboxPartyMembers(factionId) {
+  const faction = FactionStore.getAll()[factionId];
+  if (!faction || faction.kind !== "party" || !faction.sandboxPartyId) return;
+
+  const sandboxParty = getAllSandboxParties()[faction.sandboxPartyId];
+  if (!sandboxParty) return;
+
+  const sandboxMembers = Array.isArray(sandboxParty.members) ? sandboxParty.members : [];
+  const sandboxUuids   = new Set();
+  for (const m of sandboxMembers) {
+    const uuid = readMemberActorUuid(m);
+    if (uuid) sandboxUuids.add(uuid);
+  }
+
+  const current = faction.members ?? [];
+
+  // Drop sandbox-sourced members no longer in the SCM list
+  let next = current.filter(m =>
+    m.source !== "sandbox" || (m.actorUuid && sandboxUuids.has(m.actorUuid))
+  );
+
+  // Add new sandbox members (skip ones we already have by actorUuid, regardless of source)
+  const ownedUuids = new Set(next.filter(m => m.actorUuid).map(m => m.actorUuid));
+  for (const m of sandboxMembers) {
+    const uuid = readMemberActorUuid(m);
+    if (!uuid || ownedUuids.has(uuid)) continue;
+    let name = m?.name;
+    if (!name) {
+      try { name = (await fromUuid(uuid))?.name; } catch { /* stale */ }
+    }
+    next.push({
+      id:        foundry.utils.randomID(),
+      name:      name || "Unknown",
+      actorUuid: uuid,
+      notes:     [],
+      source:    "sandbox"
+    });
+  }
+
+  // Skip the write if the list is unchanged (avoids spurious re-renders)
+  if (JSON.stringify(next) === JSON.stringify(current)) return;
+  await FactionStore.update(factionId, { members: next });
+}
+
+/** Reconcile every sandbox-linked party in the FactionStore. */
+export async function syncAllSandboxPartyMembers() {
+  const ids = Object.values(FactionStore.getAll())
+    .filter(f => f.kind === "party" && f.sandboxPartyId)
+    .map(f => f.id);
+  for (const id of ids) await syncSandboxPartyMembers(id);
+}
+
+/**
+ * Imports a single SCM party into the FactionStore as `kind: "party"` and
+ * immediately syncs its members. Returns the new faction record, or null if
+ * the input is invalid.
+ */
+export async function importSandboxParty(sandboxParty) {
+  if (!sandboxParty?.id || !sandboxParty?.name) return null;
+  const faction = await FactionStore.create(sandboxParty.name, null, {
+    kind:           "party",
+    sandboxPartyId: sandboxParty.id
+  });
+  await syncSandboxPartyMembers(faction.id);
+  return faction;
 }

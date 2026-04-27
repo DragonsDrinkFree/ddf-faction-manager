@@ -29,7 +29,10 @@ export class FactionStore {
   }
 
   static getAll() {
-    return game.settings.get(MODULE_ID, SETTING_KEY) ?? {};
+    const raw = game.settings.get(MODULE_ID, SETTING_KEY) ?? {};
+    // Backfill discriminator for legacy records — parties were introduced later
+    for (const f of Object.values(raw)) if (!f.kind) f.kind = "faction";
+    return raw;
   }
 
   static async _save(data) {
@@ -130,8 +133,11 @@ export class FactionStore {
    * @param {string|null} parentId
    * @returns {Promise<object>} the new faction data
    */
-  static async create(name, parentId = null) {
+  static async create(name, parentId = null, opts = {}) {
     const id      = foundry.utils.randomID();
+    const kind    = opts.kind === "party" ? "party" : "faction";
+    // Parties are top-level only — never inherit a parentId
+    const effectiveParent = kind === "party" ? null : parentId;
     const journal = await FactionStore.ensureFactionJournal();
 
     const pages = await journal.createEmbeddedDocuments("JournalEntryPage", [{
@@ -150,7 +156,14 @@ export class FactionStore {
       }
     } catch { /* leave stats empty */ }
 
-    const faction = { id, name, parentId, pageId: pages[0].id, stats, tags: [], secrets: [], rumors: [] };
+    const faction = {
+      id, name,
+      parentId: effectiveParent,
+      pageId: pages[0].id,
+      stats, tags: [], secrets: [], rumors: [],
+      kind,
+      sandboxPartyId: opts.sandboxPartyId ?? null
+    };
     const all = this.getAll();
     all[id] = faction;
     await this._save(all);
@@ -167,6 +180,9 @@ export class FactionStore {
   static async update(id, updates) {
     const all = this.getAll();
     if (!all[id]) throw new Error(`Faction ${id} not found`);
+
+    // Parties are top-level only — silently drop attempts to give them a parent
+    if (all[id].kind === "party" && "parentId" in updates) delete updates.parentId;
 
     // Keep the journal page title in sync when the faction is renamed
     if (updates.name && updates.name !== all[id].name && all[id].pageId) {

@@ -1,0 +1,514 @@
+<div class="ddf-detail-layout">
+
+  {{!-- Tab Nav --}}
+  <nav class="ddf-tabs">
+    {{#each tabs}}
+    <a class="ddf-tab-item {{cssClass}}" data-action="switchTab" data-tab="{{id}}">
+      <i class="{{icon}}"></i>
+      <span>{{label}}</span>
+    </a>
+    {{/each}}
+  </nav>
+
+  <div class="ddf-tab-sections">
+
+    {{!-- Overview Tab: Header + Quick Note + Members + Connections --}}
+    <section class="tab overview {{#if (eq activeTab "overview")}}active{{/if}}" data-tab="overview">
+      {{#if selectedFaction}}
+
+        {{!-- Header: party name --}}
+        <div class="faction-overview-header">
+          <h2 class="faction-overview-title">{{selectedFaction.name}}</h2>
+        </div>
+
+        {{!-- Tags bar --}}
+        <div class="faction-tags-bar">
+          {{#each factionTags}}
+            <span class="ddf-tag">
+              <span class="ddf-tag-label">{{this}}</span>
+              <button type="button" class="ddf-tag-remove icon" data-action="deleteTag" data-tag="{{this}}" title="Remove tag">
+                <i class="fa-solid fa-xmark"></i>
+              </button>
+            </span>
+          {{/each}}
+          <button type="button" class="ddf-tag-add icon" data-action="addTag" title="Add tag">
+            <i class="fa-solid fa-tag"></i><i class="fa-solid fa-plus fa-2xs"></i>
+          </button>
+        </div>
+
+        {{!-- GM Quick Note --}}
+        <div class="party-quick-note-section">
+          <label class="party-quick-note-label">
+            <i class="fa-solid fa-note-sticky"></i> GM Note
+          </label>
+          <textarea class="party-quick-note-textarea"
+                    placeholder="Scribble a quick note about the party…">{{partyNote}}</textarea>
+        </div>
+
+        {{!-- Two-pane: member list left, selected-person detail right --}}
+        <div class="party-members-layout">
+
+          {{!-- Left: Two-section member list (Main Party / Retainers) --}}
+          <div class="party-members-section">
+
+            {{!-- Main Party --}}
+            <div class="party-member-group">
+              <div class="member-list-header">
+                <span><i class="fa-solid fa-shield"></i> Main Party</span>
+                <button type="button" class="icon" data-action="addMember" title="Add Player Member">
+                  <i class="fa-solid fa-user-plus"></i>
+                </button>
+              </div>
+              {{#each partyMembers}}
+                <div class="member-item{{#if isSelected}} selected{{/if}}"
+                     data-action="selectPerson" data-person-id="{{id}}" data-kind="member">
+                  <i class="fa-solid fa-user fa-fw member-item-icon"></i>
+                  <span class="member-item-name">{{displayName}}</span>
+                </div>
+              {{else}}
+                <div class="member-item-empty">No party members yet.</div>
+              {{/each}}
+            </div>
+
+            {{!-- Retainers / Hirelings --}}
+            <div class="party-member-group">
+              <div class="member-list-header">
+                <span><i class="fa-solid fa-handshake"></i> Retainers / Hirelings</span>
+                <button type="button" class="icon" data-action="addRetainer" title="Add Retainer">
+                  <i class="fa-solid fa-user-plus"></i>
+                </button>
+              </div>
+              {{#each retainers}}
+                <div class="member-item{{#if isSelected}} selected{{/if}}"
+                     data-action="selectPerson" data-person-id="{{id}}" data-kind="retainer">
+                  <i class="fa-solid fa-user-tie fa-fw member-item-icon"></i>
+                  <span class="member-item-name">{{displayName}}</span>
+                </div>
+              {{else}}
+                <div class="member-item-empty">No retainers yet.</div>
+              {{/each}}
+            </div>
+
+          </div>
+
+          {{!-- Right: Selected person detail --}}
+          <div class="party-member-detail-pane">
+        {{#if selectedPerson}}
+          <div class="party-member-detail-section">
+            <div class="member-detail-header">
+              {{#if selectedPerson.actorUuid}}
+                <h3 class="member-name-display" title="Synced from linked actor">{{selectedPerson.displayName}}</h3>
+              {{else}}
+                <input class="member-name-input"
+                       type="text"
+                       value="{{selectedPerson.name}}"
+                       placeholder="Name…" />
+              {{/if}}
+              <span class="member-detail-kind-badge">
+                {{#if selectedPerson.isRetainer}}
+                  <i class="fa-solid fa-user-tie"></i> Retainer
+                {{else}}
+                  <i class="fa-solid fa-user"></i> Party Member
+                {{/if}}
+              </span>
+            </div>
+
+            <div class="member-detail-body">
+
+              {{!-- Actor link --}}
+              <div class="member-detail-row">
+                <label class="member-detail-label">Actor</label>
+                {{#if selectedPerson.actorUuid}}
+                  <div class="member-actor-linked">
+                    <span class="member-actor-name">{{selectedPerson.actorName}}</span>
+                    <button type="button" class="icon" data-action="openPersonActor" title="Open actor sheet">
+                      <i class="fa-solid fa-external-link-alt"></i>
+                    </button>
+                    <button type="button" class="icon" data-action="unlinkPersonActor" title="Unlink actor">
+                      <i class="fa-solid fa-link-slash"></i>
+                    </button>
+                  </div>
+                {{else}}
+                  <button type="button" class="ddf-link-actor-btn" data-action="linkPersonActor">
+                    <i class="fa-solid fa-link"></i> Link Actor
+                  </button>
+                {{/if}}
+              </div>
+
+              {{!-- Retainer-only fields --}}
+              {{#if selectedPerson.isRetainer}}
+                <div class="member-detail-row retainer-wages-row">
+                  <label class="member-detail-label">Wages</label>
+                  <div class="retainer-wages-fields">
+                    <label class="retainer-wages-label">
+                      <span>Treasure Share</span>
+                      <input type="number" class="retainer-wages-input" data-wage-field="treasureShare"
+                             value="{{selectedPerson.wages.treasureShare}}" min="0" step="1" />
+                    </label>
+                    <label class="retainer-wages-label">
+                      <span>Weekly Wages</span>
+                      <input type="number" class="retainer-wages-input" data-wage-field="weeklyWages"
+                             value="{{selectedPerson.wages.weeklyWages}}" min="0" step="1" />
+                    </label>
+                  </div>
+                </div>
+
+                <div class="member-detail-row">
+                  <label class="member-detail-label">Loyalty</label>
+                  <div class="retainer-loyalty-bar" title="Click a box to set loyalty (1–12). Click the current value to lower by 1.">
+                    {{#each selectedPerson.loyaltyBoxes}}
+                      <button type="button"
+                              class="retainer-loyalty-box{{#if filled}} filled{{/if}}"
+                              data-action="setLoyalty"
+                              data-loyalty="{{value}}"
+                              title="Loyalty {{value}}/12">
+                      </button>
+                    {{/each}}
+                  </div>
+                </div>
+              {{/if}}
+
+              {{!-- Notes log --}}
+              <div class="member-notes-section">
+                <label class="member-detail-label">Notes</label>
+                <div class="member-note-draft">
+                  <textarea class="member-note-textarea"
+                    placeholder="Add a note about this {{#if selectedPerson.isRetainer}}retainer{{else}}party member{{/if}}… (Enter to save, Shift+Enter for new line)"></textarea>
+                  <button type="button" class="member-note-save" data-action="saveMemberNote">
+                    <i class="fa-solid fa-floppy-disk"></i> Save Note
+                  </button>
+                </div>
+                <div class="member-notes-log">
+                  {{#each selectedPerson.notes}}
+                    <div class="member-note-entry" data-note-id="{{id}}">
+                      <div class="member-note-entry-header">
+                        <span class="member-note-entry-time">{{formattedTime}}</span>
+                        <button type="button" class="icon member-note-delete" data-action="deleteMemberNote" title="Delete note">
+                          <i class="fa-solid fa-xmark"></i>
+                        </button>
+                      </div>
+                      <p class="member-note-entry-text">{{text}}</p>
+                    </div>
+                  {{else}}
+                    <p class="hint">No notes yet.</p>
+                  {{/each}}
+                </div>
+              </div>
+
+              {{!-- Footer: Delete --}}
+              <div class="member-detail-footer">
+                <button type="button" class="ddf-member-delete-btn" data-action="deletePerson">
+                  <i class="fa-solid fa-user-minus"></i> Remove
+                </button>
+              </div>
+
+            </div>
+          </div>
+        {{else}}
+          <div class="faction-no-selection party-member-no-selection">
+            <i class="fa-solid fa-user"></i>
+            <p>Select a party member or retainer.</p>
+          </div>
+        {{/if}}
+          </div>{{!-- /party-member-detail-pane --}}
+
+        </div>{{!-- /party-members-layout --}}
+
+      {{else}}
+        <div class="faction-no-selection">
+          <i class="fa-solid fa-people-group"></i>
+          <p>Select a party to view details.</p>
+        </div>
+      {{/if}}
+    </section>
+
+    {{!-- Objectives Tab --}}
+    <section class="tab projects {{#if (eq activeTab "projects")}}active{{/if}}" data-tab="projects">
+      {{#if selectedFaction}}
+        <div class="projects-layout">
+
+          {{!-- Left Pane: Project List --}}
+          <div class="project-list">
+            <div class="project-list-header">
+              <span>Objectives</span>
+              <button type="button" class="icon" data-action="createProject" title="New Project">
+                <i class="fa-solid fa-plus"></i>
+              </button>
+            </div>
+
+            <div class="project-section">
+              <h4 class="project-section-label">Active</h4>
+              <ol class="project-items">
+                {{#each projects.active}}
+                  <li class="project-item {{#if (eq id ../selectedProjectId)}}selected{{/if}}"
+                      data-action="selectProject" data-project-id="{{id}}">
+                    <span class="project-name">{{name}}</span>
+                    <div class="quarter-bars">
+                      {{#each quarterBars}}
+                        <div class="quarter-bar {{#if filled}}filled{{/if}}">
+                          {{#unless filled}}{{#if partial}}
+                            <div class="quarter-bar-partial" style="width:{{partial}}%"></div>
+                          {{/if}}{{/unless}}
+                        </div>
+                      {{/each}}
+                    </div>
+                  </li>
+                {{else}}
+                  <li class="project-empty">None</li>
+                {{/each}}
+              </ol>
+            </div>
+
+            <div class="project-section">
+              <h4 class="project-section-label">Finished</h4>
+              <ol class="project-items">
+                {{#each projects.finished}}
+                  <li class="project-item finished {{#if (eq id ../selectedProjectId)}}selected{{/if}}"
+                      data-action="selectProject" data-project-id="{{id}}">
+                    <span class="project-name">{{name}}</span>
+                    <div class="quarter-bars">
+                      {{#each quarterBars}}
+                        <div class="quarter-bar finished {{#if filled}}filled{{/if}}">
+                          {{#unless filled}}{{#if partial}}
+                            <div class="quarter-bar-partial" style="width:{{partial}}%"></div>
+                          {{/if}}{{/unless}}
+                        </div>
+                      {{/each}}
+                    </div>
+                  </li>
+                {{else}}
+                  <li class="project-empty">None</li>
+                {{/each}}
+              </ol>
+            </div>
+          </div>
+
+          {{!-- Right Pane: Project Detail --}}
+          <div class="project-detail">
+            {{#if selectedProject}}
+
+              <div class="project-detail-header">
+                <div class="project-name-row">
+                  <h3>{{selectedProject.name}}</h3>
+                  <button type="button" class="icon" data-action="editObjective" title="Edit name / required progress">
+                    <i class="fa-solid fa-pen"></i>
+                  </button>
+                </div>
+                <div class="project-header-actions">
+                  <span class="project-progress-value">{{selectedProject.filled}}/{{selectedProject.sections}}</span>
+                  {{#if (eq selectedProject.status "active")}}
+                    <button type="button" data-action="finishProject">
+                      <i class="fa-solid fa-flag-checkered"></i> Finish
+                    </button>
+                  {{else}}
+                    <button type="button" data-action="reactivateProject">
+                      <i class="fa-solid fa-rotate-left"></i> Reactivate
+                    </button>
+                  {{/if}}
+                  <button type="button" data-action="deleteProject" title="Delete Project">
+                    <i class="fa-solid fa-trash"></i>
+                  </button>
+                </div>
+              </div>
+
+              {{!-- Project Overview: Display or Edit --}}
+              <div class="project-overview-section">
+                <div class="project-section-header">
+                  <label>Overview</label>
+                  {{#if editingOverview}}
+                    <div class="overview-edit-actions">
+                      <button type="button" data-action="saveOverview">
+                        <i class="fa-solid fa-floppy-disk"></i> Save
+                      </button>
+                      <button type="button" data-action="cancelOverview">
+                        <i class="fa-solid fa-xmark"></i> Cancel
+                      </button>
+                    </div>
+                  {{else}}
+                    <button type="button" data-action="editOverview">
+                      <i class="fa-solid fa-pen"></i> Edit
+                    </button>
+                  {{/if}}
+                </div>
+                {{#if editingOverview}}
+                  <textarea class="project-overview-textarea"
+                    rows="5"
+                    placeholder="Describe this project's goals...">{{selectedProject.description}}</textarea>
+                {{else}}
+                  <div class="overview-display {{#unless selectedProject.description}}empty{{/unless}}">
+                    {{#if selectedProject.description}}
+                      {{{selectedProject.enrichedDescription}}}
+                    {{else}}
+                      <span class="overview-empty-hint">No overview yet. Click Edit to add one.</span>
+                    {{/if}}
+                  </div>
+                {{/if}}
+              </div>
+
+              {{!-- Progress Log --}}
+              <div class="project-notes-section">
+
+                {{!-- Inline note editor --}}
+                <div class="note-draft">
+                  <div class="note-draft-header">
+                    <label>{{#if editingNoteId}}Editing Note{{else}}Progress Log{{/if}}</label>
+                    {{#if editingNoteId}}
+                      <button type="button" data-action="cancelNoteEdit">
+                        <i class="fa-solid fa-xmark"></i> Cancel
+                      </button>
+                    {{/if}}
+                  </div>
+                  <div class="note-draft-presets ddf-note-presets">
+                    <label class="ddf-preset-btn"><input type="radio" name="note_preset" value="1">+1</label>
+                    <label class="ddf-preset-btn"><input type="radio" name="note_preset" value="2">+2</label>
+                    <label class="ddf-preset-btn"><input type="radio" name="note_preset" value="3">+3</label>
+                    <input type="number" name="note_custom" class="ddf-delta-custom"
+                      placeholder="Progress" min="-99" max="99" />
+                    <button type="button" class="note-draft-save" data-action="saveInlineNote">
+                      <i class="fa-solid fa-floppy-disk"></i> Save
+                    </button>
+                  </div>
+                  <textarea class="note-draft-textarea"
+                    placeholder="Write a progress note… (Enter to save, Shift+Enter for new line)"></textarea>
+                </div>
+
+                {{!-- Log entries --}}
+                <div class="project-notes-log">
+                  {{#each selectedProject.notes}}
+                    <div class="note-entry {{#if (eq id ../editingNoteId)}}is-editing{{/if}}" data-note-id="{{id}}">
+                      <div class="note-header">
+                        <span class="note-date">{{formattedDate}}</span>
+                        <span class="note-delta {{deltaClass}}">{{formattedDelta}}</span>
+                        <div class="note-controls">
+                          <a class="icon" data-action="editNote" title="Edit Note">
+                            <i class="fa-solid fa-pen"></i>
+                          </a>
+                          <a class="icon" data-action="deleteNote" title="Delete Note">
+                            <i class="fa-solid fa-trash"></i>
+                          </a>
+                        </div>
+                      </div>
+                      <p class="note-text">{{text}}</p>
+                    </div>
+                  {{else}}
+                    <p class="hint">No notes yet — write one above.</p>
+                  {{/each}}
+                </div>
+
+              </div>
+
+            {{else}}
+              <div class="faction-no-selection">
+                <i class="fa-solid fa-list-check"></i>
+                <p>Select an objective to view details.</p>
+              </div>
+            {{/if}}
+          </div>
+
+        </div>
+      {{else}}
+        <div class="faction-no-selection">
+          <i class="fa-solid fa-people-group"></i>
+          <p>Select a party to view details.</p>
+        </div>
+      {{/if}}
+    </section>
+
+    {{!-- Connections Tab --}}
+    <section class="tab connections {{#if (eq activeTab "connections")}}active{{/if}}" data-tab="connections">
+      {{#if selectedFaction}}
+        <div class="party-connections-layout">
+          <div class="rel-list-header">
+            <span><i class="fa-solid fa-circle-nodes"></i> Connections</span>
+            <button type="button" class="icon ddf-conn-add-btn" data-action="addConnection" title="Add connection">
+              <i class="fa-solid fa-plus"></i>
+            </button>
+          </div>
+          <div class="faction-connections-body">
+            {{#each relationshipItems}}
+              <div class="rel-list-item{{#if isAuto}} rel-auto{{/if}}" data-edge-id="{{id}}">
+                {{#if isAuto}}
+                  {{#if icon}}<i class="rel-type-icon {{icon}}"></i>{{/if}}
+                {{else}}
+                  <button type="button" class="rel-break-btn icon"
+                          data-action="deleteConnection"
+                          data-edge-id="{{id}}"
+                          title="Remove connection">
+                    <i class="fa-solid fa-link-slash"></i>
+                  </button>
+                {{/if}}
+                <span class="rel-name rel-name-link"
+                      data-action="openConnection"
+                      {{#if targetFactionId}}data-target-faction-id="{{targetFactionId}}"{{/if}}
+                      {{#if documentUuid}}data-document-uuid="{{documentUuid}}"{{/if}}
+                      title="{{name}}">{{name}}</span>
+                {{#if isAuto}}
+                  <span class="rel-dir">{{directionSymbol}}</span>
+                {{else}}
+                  <button type="button" class="rel-dir-btn" data-edge-id="{{id}}" data-direction="{{direction}}" data-reversed="{{isReversed}}" title="Toggle direction">{{directionSymbol}}</button>
+                  <select class="rel-type-select" data-edge-id="{{id}}">
+                    <option value="">—</option>
+                    {{#each ../connectionTypes}}
+                      <option value="{{id}}" {{#if (eq id ../connectionTypeId)}}selected{{/if}}>{{name}}</option>
+                    {{/each}}
+                  </select>
+                {{/if}}
+              </div>
+            {{else}}
+              <div class="rel-list-empty">
+                <p>No connections yet.</p>
+                <p>Use <strong>+</strong> to add one.</p>
+              </div>
+            {{/each}}
+          </div>
+        </div>
+      {{else}}
+        <div class="faction-no-selection">
+          <i class="fa-solid fa-people-group"></i>
+          <p>Select a party to view connections.</p>
+        </div>
+      {{/if}}
+    </section>
+
+    {{!-- Event Log Tab --}}
+    <section class="tab eventlog {{#if (eq activeTab "eventlog")}}active{{/if}}" data-tab="eventlog">
+      {{#if selectedFaction}}
+        <div class="event-log-header">
+          <h3 class="event-log-title"><i class="fa-solid fa-clock-rotate-left"></i> Event Log</h3>
+          <span class="event-log-count">{{eventLogEntries.length}} events</span>
+        </div>
+        {{#if eventLogEntries.length}}
+          <ul class="event-log-list">
+            {{#each eventLogEntries}}
+              <li class="event-log-entry event-log-cat-{{category}}">
+                <span class="event-log-icon">
+                  {{#if (eq category "member")}}
+                    <i class="fa-solid fa-user"></i>
+                  {{else if (eq category "objective")}}
+                    <i class="fa-solid fa-bullseye"></i>
+                  {{else}}
+                    <i class="fa-solid fa-link"></i>
+                  {{/if}}
+                </span>
+                <span class="event-log-text">{{text}}</span>
+                <span class="event-log-time" title="{{formattedTime}}">{{formattedTime}}</span>
+              </li>
+            {{/each}}
+          </ul>
+        {{else}}
+          <div class="event-log-empty">
+            <i class="fa-solid fa-hourglass-start"></i>
+            <p>No events recorded yet. Changes to members, objectives, and connections will appear here.</p>
+          </div>
+        {{/if}}
+      {{else}}
+        <div class="faction-no-selection">
+          <i class="fa-solid fa-people-group"></i>
+          <p>Select a party to view the event log.</p>
+        </div>
+      {{/if}}
+    </section>
+
+  </div>
+
+</div>

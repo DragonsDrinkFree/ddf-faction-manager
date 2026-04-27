@@ -11,6 +11,7 @@ import {
   readSelectedType,
   bindPanelDismiss
 } from "../utils/ConnectionPanelHelpers.js";
+import { syncAllSandboxPartyMembers } from "../utils/SandboxIntegration.js";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -108,8 +109,10 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
     this.#showForceLayoutPanel(rect.left, rect.bottom + 4);
   }
 
-  static show() {
+  static async show() {
     if (!game.user.isGM) return;
+    // Reconcile every sandbox-linked party's roster before the map mounts
+    await syncAllSandboxPartyMembers();
     if (!GlobalRelationshipsApp.#instance) {
       GlobalRelationshipsApp.#instance = new GlobalRelationshipsApp();
     }

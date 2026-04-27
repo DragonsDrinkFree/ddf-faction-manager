@@ -122,6 +122,34 @@
   background: var(--color-hover-bg);
 }
 
+/* ── Adventuring Party rows ─────────────────────────────────────────────── */
+#ddfFactions .faction-item .faction-kind-icon,
+.ddf-faction-manager .faction-item .faction-kind-icon {
+  margin-right: 4px;
+  opacity: 0.7;
+}
+#ddfFactions .faction-item.is-party .faction-name,
+.ddf-faction-manager .faction-item.is-party .faction-name {
+  font-style: italic;
+}
+
+/* Active sandbox party — gold accent */
+#ddfFactions .faction-item.is-active-party > .faction-item-row,
+.ddf-faction-manager .faction-item.is-active-party > .faction-item-row {
+  background: linear-gradient(90deg, rgba(212, 175, 55, 0.18), transparent);
+  border-left: 3px solid #d4af37;
+}
+#ddfFactions .faction-item.is-active-party .faction-name,
+.ddf-faction-manager .faction-item.is-active-party .faction-name {
+  color: #d4af37;
+  font-weight: 600;
+}
+#ddfFactions .faction-item.is-active-party .faction-kind-icon,
+.ddf-faction-manager .faction-item.is-active-party .faction-kind-icon {
+  color: #d4af37;
+  opacity: 1;
+}
+
 #ddfFactions .faction-children,
 .ddf-faction-manager .faction-children {
   list-style: none;
@@ -3773,4 +3801,312 @@
 .mm-btn-delete:hover {
   border-color: #c0392b;
   color: #c0392b;
+}
+
+/* ── Party Detail Sheet ──────────────────────────────────────────────────── */
+
+/* GM Quick Note */
+.ddf-party-detail .party-quick-note-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--color-border-light-primary);
+}
+.ddf-party-detail .party-quick-note-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+.ddf-party-detail .party-quick-note-textarea {
+  width: 100%;
+  min-height: 56px;
+  resize: vertical;
+  padding: 6px 8px;
+  border: 1px solid var(--color-border-dark, #555);
+  border-radius: 3px;
+  background: var(--color-bg-option, rgba(0, 0, 0, 0.15));
+  color: var(--color-text-dark-primary);
+  font-size: 0.85em;
+  font-family: inherit;
+}
+.ddf-party-detail .party-quick-note-textarea:focus {
+  outline: none;
+  border-color: var(--color-border-highlight, #5b9bd5);
+}
+
+/* Two-pane: Members list (left) | Selected-person detail (right) */
+.ddf-party-detail .party-members-layout {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+.ddf-party-detail .party-members-section {
+  width: 240px;
+  min-width: 200px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  border-right: 1px solid var(--color-border-light-primary);
+}
+.ddf-party-detail .party-member-detail-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+.ddf-party-detail .party-member-no-selection {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.5;
+  gap: 8px;
+}
+.ddf-party-detail .party-member-no-selection i {
+  font-size: 2.5em;
+}
+
+/* Selected-person detail panel (right pane content) */
+.ddf-party-detail .party-member-detail-section {
+  flex: 1;
+  overflow-y: auto;
+  background: var(--color-bg-option, rgba(0, 0, 0, 0.08));
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Read-only name heading shown for actor-linked persons (instead of an input) */
+.ddf-party-detail .member-name-display {
+  flex: 1;
+  margin: 0;
+  font-size: 1.05em;
+  font-weight: 600;
+  padding: 4px 6px;
+  cursor: default;
+}
+.ddf-party-detail .party-member-detail-section .member-detail-header {
+  display: flex;
+}
+.ddf-party-detail .party-member-detail-section .member-name-input {
+  flex: 1;
+  font-size: 1.05em;
+  font-weight: 600;
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 4px 6px;
+  border-radius: 3px;
+  color: var(--color-text-dark-primary);
+}
+.ddf-party-detail .party-member-detail-section .member-name-input:hover,
+.ddf-party-detail .party-member-detail-section .member-name-input:focus {
+  border-color: var(--color-border-dark, #555);
+  background: var(--color-bg-option, rgba(0, 0, 0, 0.2));
+  outline: none;
+}
+.ddf-party-detail .party-member-detail-section .member-detail-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.ddf-party-detail .party-member-detail-section .member-detail-label {
+  width: 60px;
+  font-size: 0.8em;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.7;
+}
+.ddf-party-detail .party-member-detail-section .member-detail-footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Connections tab — single-column list filling the tab area */
+.ddf-party-detail .party-connections-layout {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+.ddf-party-detail .party-connections-layout .faction-connections-body {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* Two-section list (Main Party / Retainers) */
+.ddf-party-detail .party-member-group {
+  display: flex;
+  flex-direction: column;
+}
+.ddf-party-detail .party-member-group + .party-member-group {
+  margin-top: 4px;
+  border-top: 1px solid var(--color-border-light-primary);
+}
+
+/* Kind badge in the detail header */
+.ddf-party-detail .party-member-detail-section .member-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ddf-party-detail .member-detail-kind-badge {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  border-radius: 10px;
+  background: var(--color-bg-option, rgba(0, 0, 0, 0.25));
+  opacity: 0.75;
+  white-space: nowrap;
+}
+
+/* Wages */
+.ddf-party-detail .retainer-wages-row {
+  align-items: flex-start;
+}
+.ddf-party-detail .retainer-wages-fields {
+  display: flex;
+  gap: 12px;
+  flex: 1;
+}
+.ddf-party-detail .retainer-wages-label {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.75em;
+  opacity: 0.85;
+  gap: 2px;
+}
+.ddf-party-detail .retainer-wages-input {
+  width: 90px;
+  padding: 3px 6px;
+  border: 1px solid var(--color-border-dark, #555);
+  border-radius: 3px;
+  background: var(--color-bg-option, rgba(0, 0, 0, 0.2));
+  color: var(--color-text-dark-primary);
+  font-size: 0.9em;
+}
+
+/* Loyalty 12-box bar */
+.ddf-party-detail .retainer-loyalty-bar {
+  display: flex;
+  gap: 3px;
+  flex: 1;
+}
+.ddf-party-detail .retainer-loyalty-box {
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--color-border-dark, #555);
+  border-radius: 3px;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.1s, border-color 0.1s;
+}
+.ddf-party-detail .retainer-loyalty-box:hover {
+  border-color: #d4af37;
+}
+.ddf-party-detail .retainer-loyalty-box.filled {
+  background: #d4af37;
+  border-color: #d4af37;
+}
+
+/* Notes log */
+.ddf-party-detail .member-notes-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+.ddf-party-detail .member-note-draft {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+.ddf-party-detail .member-note-textarea {
+  flex: 1;
+  min-height: 38px;
+  resize: vertical;
+  padding: 5px 7px;
+  border: 1px solid var(--color-border-dark, #555);
+  border-radius: 3px;
+  background: var(--color-bg-option, rgba(0, 0, 0, 0.2));
+  color: var(--color-text-dark-primary);
+  font-family: inherit;
+  font-size: 0.85em;
+}
+.ddf-party-detail .member-note-save {
+  align-self: flex-start;
+  white-space: nowrap;
+}
+.ddf-party-detail .member-notes-log {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+.ddf-party-detail .member-note-entry {
+  border-left: 2px solid var(--color-border-dark, #555);
+  padding: 3px 8px;
+  background: var(--color-bg-option, rgba(0, 0, 0, 0.1));
+  border-radius: 0 3px 3px 0;
+}
+.ddf-party-detail .member-note-entry-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.7em;
+  opacity: 0.6;
+}
+.ddf-party-detail .member-note-entry-text {
+  margin: 2px 0 0;
+  font-size: 0.88em;
+  white-space: pre-wrap;
+}
+.ddf-party-detail .member-note-delete {
+  font-size: 0.8em;
+  opacity: 0.5;
+}
+.ddf-party-detail .member-note-delete:hover {
+  opacity: 1;
+  color: #c0392b;
+}
+
+/* ── Sandbox Import Dialog ───────────────────────────────────────────────── */
+.ddf-import-party-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+.ddf-import-party-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border: 1px solid var(--color-border-light-primary, #555);
+  border-radius: 3px;
+  cursor: pointer;
+}
+.ddf-import-party-row:hover {
+  background: var(--color-hover-bg, rgba(255, 255, 255, 0.05));
+}
+.ddf-import-party-row input[type="checkbox"] {
+  margin: 0;
+}
+.ddf-import-party-row .hint {
+  margin-left: auto;
+  opacity: 0.6;
+  font-size: 0.85em;
 }
