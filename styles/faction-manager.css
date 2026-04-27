@@ -1942,6 +1942,25 @@
   overflow: hidden;
 }
 
+.ddf-global-relationships .global-rel-filter-row {
+  padding: 5px 8px 4px;
+  flex-shrink: 0;
+}
+.ddf-global-relationships .global-rel-filter-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 3px 7px;
+  border: 1px solid var(--color-border-dark, #555);
+  border-radius: 3px;
+  background: var(--color-bg-option, #1a1a1a);
+  color: var(--color-text-dark-primary);
+  font-size: 0.82em;
+}
+.ddf-global-relationships .global-rel-filter-input:focus {
+  outline: none;
+  border-color: var(--color-border-highlight, #5b9bd5);
+}
+
 .ddf-global-relationships .global-rel-list-header {
   display: flex;
   align-items: center;

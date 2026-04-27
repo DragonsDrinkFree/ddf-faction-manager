@@ -497,7 +497,8 @@ export class MindMapRenderer {
       if (e.target === this.#svg || e.target.classList.contains("mm-bg")) {
         e.preventDefault();
         e.stopPropagation();
-        this.#config.onContextMenu(0, 0, e.clientX, e.clientY);
+        const wp = this.#svgCoords(e);
+        this.#config.onContextMenu(wp.x, wp.y, e.clientX, e.clientY);
       }
     });
 
@@ -2214,28 +2215,32 @@ export class MindMapRenderer {
    * when the user tries to click it.
    */
   #updateHoverConnector(e) {
-    // When the mouse is on the connector dot itself, leave it exactly where it is.
     if (e.target === this.#connectorDot) return;
 
     const worldPos = this.#svgCoords(e);
-    let bestNode = null;
-    let bestDist = Infinity;
+    let bestNode = null, bestEdgePt = null, bestDist = Infinity;
 
+    const OUTER_GRAB = 14; // world-unit leeway outside the boundary
     for (const node of Object.values(this._globalNodeMap ?? {})) {
       const r  = this.#nodeRadius(node);
       const dx = worldPos.x - node.x;
       const dy = worldPos.y - node.y;
-      const d  = Math.sqrt(dx * dx + dy * dy);
-      if (d <= r && d < bestDist) { bestDist = d; bestNode = node; }
+      // Pre-filter: skip nodes whose bounding circle is too far away
+      if (Math.hypot(dx, dy) > r + OUTER_GRAB + 2) continue;
+      const { x: ex, y: ey, inside } = this.#nodeEdgePoint(node, worldPos.x, worldPos.y);
+      const distToEdge = Math.hypot(worldPos.x - ex, worldPos.y - ey);
+      // Inside: show in the outer 55% of the shape. Outside: show within OUTER_GRAB units.
+      const inZone = inside ? distToEdge < r * 0.55 : distToEdge < OUTER_GRAB;
+      if (inZone && distToEdge < bestDist) {
+        bestDist   = distToEdge;
+        bestNode   = node;
+        bestEdgePt = { x: ex, y: ey };
+      }
     }
 
     if (bestNode) {
       this.#connHover = bestNode;
-      const r   = this.#nodeRadius(bestNode);
-      const dx  = worldPos.x - bestNode.x;
-      const dy  = worldPos.y - bestNode.y;
-      const len = Math.sqrt(dx * dx + dy * dy) || 1;
-      const px  = this.#worldToSvgPx(bestNode.x + dx / len * r, bestNode.y + dy / len * r);
+      const px = this.#worldToSvgPx(bestEdgePt.x, bestEdgePt.y);
       this.#connectorDot.setAttribute("cx", px.x);
       this.#connectorDot.setAttribute("cy", px.y);
       this.#connectorDot.style.display = "";
@@ -2243,6 +2248,125 @@ export class MindMapRenderer {
       this.#connHover = null;
       this.#connectorDot.style.display = "none";
     }
+  }
+
+  /**
+   * Returns the point on `node`'s actual shape boundary in the direction from
+   * the node centre toward world point (wx, wy), plus whether (wx, wy) is
+   * inside the shape. All coordinates are in world space.
+   */
+  #nodeEdgePoint(node, wx, wy) {
+    const dx = wx - node.x, dy = wy - node.y;
+    const dist = Math.hypot(dx, dy);
+    // Cursor is at the exact centre — project upward as a safe default
+    if (dist < 0.1) {
+      const r = this.#nodeRadius(node);
+      return { x: node.x, y: node.y - r, inside: true };
+    }
+    const ux = dx / dist, uy = dy / dist;
+    const s  = this.#nodeRadius(node);
+    const t  = node.type;
+
+    // ── Circles ────────────────────────────────────────────────────────────
+    if (t === NODE_TYPE.CENTRAL || t === NODE_TYPE.SUBFACTION ||
+        t === NODE_TYPE.FACTION || t === NODE_TYPE.POV        ||
+        t === NODE_TYPE.FACTION_GLOBAL) {
+      return { x: node.x + ux * s, y: node.y + uy * s, inside: dist <= s };
+    }
+
+    // ── Diamond (axis-aligned rhombus) ─────────────────────────────────────
+    if (t === NODE_TYPE.DOC_ACTOR  || t === NODE_TYPE.MEMBER_ACTOR ||
+        t === NODE_TYPE.MEMBER_OTHER) {
+      const poly = [{x:0,y:-s},{x:s,y:0},{x:0,y:s},{x:-s,y:0}];
+      const pt   = this.#rayPolyEdge(ux, uy, poly) ?? {x: ux*s, y: uy*s};
+      return { x: node.x + pt.x, y: node.y + pt.y,
+               inside: Math.abs(dx) + Math.abs(dy) <= s };
+    }
+
+    // ── Hexagon pointy-top (doc-scene) ─────────────────────────────────────
+    if (t === NODE_TYPE.DOC_SCENE) {
+      const poly = Array.from({length: 6}, (_, i) => {
+        const a = (Math.PI / 3) * i - Math.PI / 2;
+        return { x: s * Math.cos(a), y: s * Math.sin(a) };
+      });
+      const pt = this.#rayPolyEdge(ux, uy, poly) ?? {x: ux*s, y: uy*s};
+      return { x: node.x + pt.x, y: node.y + pt.y,
+               inside: this.#pointInPoly(dx, dy, poly) };
+    }
+
+    // ── Parallelogram (doc-journal) ─────────────────────────────────────────
+    if (t === NODE_TYPE.DOC_JOURNAL) {
+      const w = s*1.6, h = s*0.85, sk = s*0.3;
+      const poly = [
+        {x: -w/2+sk, y: -h/2}, {x:  w/2+sk, y: -h/2},
+        {x:  w/2-sk, y:  h/2}, {x: -w/2-sk, y:  h/2},
+      ];
+      const pt = this.#rayPolyEdge(ux, uy, poly) ?? {x: ux*s, y: uy*s};
+      return { x: node.x + pt.x, y: node.y + pt.y,
+               inside: this.#pointInPoly(dx, dy, poly) };
+    }
+
+    // ── Rectangle: document (fixed dims) ────────────────────────────────────
+    if (t === NODE_TYPE.DOCUMENT) {
+      const hw = R.document.rx, hh = R.document.ry;
+      const pt = this.#rayRectEdge(ux, uy, hw, hh);
+      return { x: node.x + pt.x, y: node.y + pt.y,
+               inside: Math.abs(dx) <= hw && Math.abs(dy) <= hh };
+    }
+
+    // ── Square: doc-other (half-size = s) ───────────────────────────────────
+    if (t === NODE_TYPE.DOC_OTHER) {
+      const pt = this.#rayRectEdge(ux, uy, s, s);
+      return { x: node.x + pt.x, y: node.y + pt.y,
+               inside: Math.abs(dx) <= s && Math.abs(dy) <= s };
+    }
+
+    // ── Ellipse (simple) ────────────────────────────────────────────────────
+    if (t === NODE_TYPE.SIMPLE) {
+      const erx = R.simple.rx, ery = R.simple.ry;
+      const te  = 1 / Math.sqrt((ux/erx)**2 + (uy/ery)**2);
+      return { x: node.x + ux*te, y: node.y + uy*te,
+               inside: (dx/erx)**2 + (dy/ery)**2 <= 1 };
+    }
+
+    // ── Fallback: treat as circle ────────────────────────────────────────────
+    return { x: node.x + ux * s, y: node.y + uy * s, inside: dist <= s };
+  }
+
+  /** Ray from origin along (ux,uy) vs axis-aligned rect [-hw,hw]×[-hh,hh]. Returns local offset. */
+  #rayRectEdge(ux, uy, hw, hh) {
+    const tx = Math.abs(ux) > 1e-9 ? (ux > 0 ? hw : -hw) / ux : Infinity;
+    const ty = Math.abs(uy) > 1e-9 ? (uy > 0 ? hh : -hh) / uy : Infinity;
+    const te = Math.min(tx, ty);
+    return { x: ux * te, y: uy * te };
+  }
+
+  /** Ray from origin along (ux,uy) vs polygon (vertices relative to origin). Returns local offset or null. */
+  #rayPolyEdge(ux, uy, poly) {
+    let best = Infinity;
+    for (let i = 0, n = poly.length; i < n; i++) {
+      const a = poly[i], b = poly[(i+1) % n];
+      const edx = b.x - a.x, edy = b.y - a.y;
+      const det = -ux*edy + edx*uy;
+      if (Math.abs(det) < 1e-9) continue;
+      const te = (-a.x*edy + edx*a.y) / det;
+      const sv = ( ux*a.y - a.x*uy) / det;
+      if (te > 1e-9 && sv >= -1e-9 && sv <= 1+1e-9 && te < best) best = te;
+    }
+    return best === Infinity ? null : { x: ux*best, y: uy*best };
+  }
+
+  /** Ray-casting point-in-polygon (works for any simple polygon, CW or CCW). */
+  #pointInPoly(px, py, poly) {
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const xi = poly[i].x, yi = poly[i].y;
+      const xj = poly[j].x, yj = poly[j].y;
+      if (((yi > py) !== (yj > py)) && px < (xj-xi)*(py-yi)/(yj-yi)+xi) {
+        inside = !inside;
+      }
+    }
+    return inside;
   }
 
   #el(tag, attrs = {}) {

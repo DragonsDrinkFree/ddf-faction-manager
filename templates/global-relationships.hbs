@@ -4,6 +4,9 @@
 
     {{!-- Left Pane: Faction List --}}
     <div class="global-rel-faction-list">
+      <div class="global-rel-filter-row">
+        <input type="text" class="global-rel-filter-input" placeholder="Filter factions &amp; documents…">
+      </div>
       <div class="global-rel-list-header">
         <span>Factions</span>
         {{#if povFactionId}}
@@ -12,7 +15,7 @@
       </div>
       {{#each allFactions}}
         <div class="global-rel-faction-item{{#if isPOV}} selected{{/if}}{{#if isSubFaction}} is-subfaction{{/if}}{{#if isHidden}} is-hidden{{/if}}"
-             data-faction-id="{{id}}"
+             data-faction-id="{{id}}" data-filter-name="{{name}}"
              title="{{name}}">
           {{#if hasSubFactions}}
             <button type="button" class="global-rel-collapse-btn" data-faction-id="{{id}}"
@@ -38,7 +41,7 @@
       {{#if mapDocuments.length}}
         {{#each mapDocuments}}
           <div class="global-rel-doc-item{{#if isSelected}} selected{{/if}}"
-               data-uuid="{{uuid}}" title="{{documentName}}">
+               data-uuid="{{uuid}}" data-filter-name="{{documentName}}" title="{{documentName}}">
             <i class="fa-solid {{icon}} fa-fw"></i>
             <span class="global-rel-doc-name">{{documentName}}</span>
             <button type="button" class="global-rel-doc-remove icon"

@@ -357,6 +357,22 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
       });
     }
 
+    // ── Left-pane filter ─────────────────────────────────────────────────────
+    const filterInput = this.element.querySelector(".global-rel-filter-input");
+    filterInput?.addEventListener("input", () => {
+      const q = filterInput.value.toLowerCase().trim();
+      this.element.querySelectorAll(".global-rel-faction-item").forEach(el => {
+        const match = !q || el.dataset.filterName?.toLowerCase().includes(q);
+        el.style.display = match ? "" : "none";
+      });
+      this.element.querySelectorAll(".global-rel-doc-item").forEach(el => {
+        const match = !q || el.dataset.filterName?.toLowerCase().includes(q);
+        el.style.display = match ? "" : "none";
+      });
+      const docEmpty = this.element.querySelector(".global-rel-doc-empty");
+      if (docEmpty) docEmpty.style.display = q ? "none" : "";
+    });
+
     // ── Drag-to-reorder (top-level factions only) ─────────────────────────────
     this.#wireDragReorder();
   }
@@ -509,8 +525,8 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
         RelationshipStore.savePosition("__global__", nodeKey, x, y);
       },
 
-      onContextMenu: (_sx, _sy, clientX, clientY) => {
-        app.#showCanvasContextMenu(clientX, clientY);
+      onContextMenu: (worldX, worldY, clientX, clientY) => {
+        app.#showCanvasContextMenu(clientX, clientY, worldX, worldY);
       },
 
       onNodeContextMenu: (nodeKey, _edge, clientX, clientY) => {
@@ -566,23 +582,54 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
 
   // ─── Canvas Context Menu (Add Connection) ─────────────────────────────────────
 
-  #showCanvasContextMenu(clientX, clientY) {
+  #showCanvasContextMenu(clientX, clientY, worldX = 0, worldY = 0) {
     this.#closeFloatingPanels();
 
     if (!this.#povFactionId) {
-      // No POV: cannot add from canvas; show a hint
-      const hint = document.createElement("div");
-      hint.className = "mm-search-panel";
-      hint.style.left = `${clientX}px`;
-      hint.style.top  = `${clientY}px`;
-      hint.innerHTML = `
-        <div class="mm-panel-title">Add Connection</div>
-        <p class="mm-panel-hint-text">Click a faction node or select one in the left pane to select a node first.</p>
-        <div class="mm-panel-actions"><button class="mm-btn-cancel">Close</button></div>
+      // No POV: offer to create a new node (faction or document)
+      const panel = document.createElement("div");
+      panel.className  = "mm-search-panel";
+      panel.style.left = `${clientX}px`;
+      panel.style.top  = `${clientY}px`;
+      panel.innerHTML = `
+        <div class="mm-panel-title">Create / Add Node</div>
+        <div class="mm-panel-options">
+          <button class="mm-option" data-mode="faction">
+            <i class="fa-solid fa-shield-halved"></i> New Faction
+          </button>
+          <button class="mm-option" data-mode="document">
+            <i class="fa-solid fa-file"></i> Add Document
+          </button>
+        </div>
       `;
-      hint.querySelector(".mm-btn-cancel").addEventListener("click", () => this.#closeFloatingPanels());
-      this.#appendFloating(hint);
-      bindPanelDismiss(hint);
+      panel.querySelector('[data-mode="faction"]').addEventListener("click", () => {
+        panel.innerHTML = `
+          <div class="mm-panel-title">New Faction</div>
+          <input type="text" class="mm-search-input" placeholder="Faction name…" autofocus>
+          <div class="mm-panel-actions">
+            <button class="mm-btn-confirm">Create</button>
+            <button class="mm-btn-cancel">Cancel</button>
+          </div>
+        `;
+        const nameInput = panel.querySelector(".mm-search-input");
+        panel.querySelector(".mm-btn-confirm").addEventListener("click", async () => {
+          const name = nameInput.value.trim();
+          if (!name) return;
+          const faction = await FactionStore.create(name);
+          await RelationshipStore.savePosition("__global__", faction.id, worldX, worldY);
+          this.#closeFloatingPanels();
+          this.render({ force: true });
+        });
+        nameInput.addEventListener("keydown", async (e) => {
+          if (e.key === "Enter") panel.querySelector(".mm-btn-confirm").click();
+        });
+        panel.querySelector(".mm-btn-cancel").addEventListener("click", () => this.#closeFloatingPanels());
+      });
+      panel.querySelector('[data-mode="document"]').addEventListener("click", () => {
+        this.#showDocumentSearch(panel, null);
+      });
+      this.#appendFloating(panel);
+      bindPanelDismiss(panel);
       return;
     }
 
@@ -854,16 +901,19 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
     }
 
     // ─── Build menu HTML ────────────────────────────────────────────────────
-    const isScene    = target.docType === "Scene";
-    const sheetLabel = isScene ? "Load Scene"                      : "Open Sheet";
-    const sheetIcon  = isScene ? "fa-solid fa-map"                 : "fa-solid fa-arrow-up-right-from-square";
+    const isScene        = target.docType === "Scene";
+    const sheetLabel     = isScene ? "Load Scene"         : "Open Sheet";
+    const sheetIcon      = isScene ? "fa-solid fa-map"    : "fa-solid fa-arrow-up-right-from-square";
+    // Size controls shown only when inspecting in isolation: no node selected, or this node IS selected
+    const showSizeControls = target.isDocLike && (!this.#povFactionId || isCurrent);
+
     let menuHTML = `
       <button class="mm-node-menu-item" data-action="open-sheet">
         <i class="${sheetIcon}"></i> ${sheetLabel}
       </button>
     `;
 
-    if (target.isDocLike) {
+    if (showSizeControls) {
       const sliderMin = Math.round(presets.small * 0.5);
       const sliderMax = Math.round(presets.large * 2);
       menuHTML += `
@@ -928,7 +978,7 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
       }
     });
 
-    if (target.isDocLike) {
+    if (showSizeControls) {
       menu.querySelectorAll(".mm-doc-size-btn").forEach(btn => {
         btn.addEventListener("click", async () => {
           const px = parseInt(btn.dataset.sizePx, 10);
