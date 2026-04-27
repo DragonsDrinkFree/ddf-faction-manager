@@ -1,10 +1,10 @@
 {
   "id": "ddf-faction-manager",
   "title": "Faction Manager",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "compatibility": {
     "minimum": "13",
-    "verified": "14.359"
+    "verified": "14.360"
   },
   "authors": [
     {

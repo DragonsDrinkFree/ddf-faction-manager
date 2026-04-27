@@ -834,9 +834,12 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
     }
 
     // ─── Build menu HTML ────────────────────────────────────────────────────
+    const isScene    = target.docType === "Scene";
+    const sheetLabel = isScene ? "Load Scene"                      : "Open Sheet";
+    const sheetIcon  = isScene ? "fa-solid fa-map"                 : "fa-solid fa-arrow-up-right-from-square";
     let menuHTML = `
       <button class="mm-node-menu-item" data-action="open-sheet">
-        <i class="fa-solid fa-arrow-up-right-from-square"></i> Open Sheet
+        <i class="${sheetIcon}"></i> ${sheetLabel}
       </button>
     `;
 
@@ -895,7 +898,11 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
       this.#closeFloatingPanels();
       if (target.isDocLike) {
         const doc = await fromUuid(target.uuid);
-        doc?.sheet?.render(true);
+        if (isScene) {
+          doc?.activate();
+        } else {
+          doc?.sheet?.render(true);
+        }
       } else {
         FactionDetailApp.show(nodeKey);
       }
