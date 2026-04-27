@@ -3706,3 +3706,52 @@
   font-style: italic;
   line-height: 1.4;
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   RELATIONSHIP MAP — Drag-to-connect connector & edge interaction
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Connector dot — appears at node edge on hover */
+.mm-connector-dot {
+  fill: var(--color-border-highlight, #5b9bd5);
+  stroke: #fff;
+  stroke-width: 2;
+  cursor: crosshair;
+  filter: drop-shadow(0 1px 3px rgba(0,0,0,0.5));
+}
+
+/* Ghost edge drawn during connection drag */
+.mm-ghost-edge {
+  stroke: var(--color-border-highlight, #5b9bd5);
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+  opacity: 0.75;
+}
+
+/* Wide invisible hit area for easier edge clicking */
+.mm-edge-hit {
+  stroke: transparent;
+  stroke-width: 14;
+  fill: none;
+}
+
+/* Target node highlight during connection drag */
+.ddf-global-relationships .mm-connect-target .mm-shape {
+  filter: drop-shadow(0 0 6px var(--color-border-highlight, #5b9bd5));
+  stroke: var(--color-border-highlight, #5b9bd5) !important;
+  stroke-width: 3 !important;
+}
+
+/* Delete button in edge edit panel */
+.mm-btn-delete {
+  background: transparent;
+  border: 1px solid var(--color-border-dark, #555);
+  color: var(--color-text-dark-primary, #ccc);
+  padding: 4px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.mm-btn-delete:hover {
+  border-color: #c0392b;
+  color: #c0392b;
+}

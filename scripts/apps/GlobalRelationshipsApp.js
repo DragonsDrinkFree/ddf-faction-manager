@@ -525,6 +525,26 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
         app.#forceLayoutActive = false;
         const btn = app.element.querySelector('[data-action="toggleForceLayout"]');
         if (btn) btn.classList.remove("active");
+      },
+
+      onConnectNodes: (fromKey, toKey, clientX, clientY) => {
+        const from = app.#describeNode(fromKey);
+        const to   = app.#describeNode(toKey);
+        app.#closeFloatingPanels();
+        if (from.isDocLike && to.isDocLike) {
+          app.#showDocToDocConnectionPanel(from.uuid, from.name, to.uuid, to.name, clientX, clientY);
+        } else if (from.kind === "faction" && to.isDocLike) {
+          app.#showDirectDocumentConnectionPanel(from.factionId, to.uuid, to.docType, to.docName, clientX, clientY);
+        } else if (from.isDocLike && to.kind === "faction") {
+          app.#showDirectDocumentConnectionPanel(to.factionId, from.uuid, from.docType, from.docName, clientX, clientY);
+        } else if (from.kind === "faction" && to.kind === "faction") {
+          app.#showDirectConnectionPanel(from.factionId, to.factionId, clientX, clientY);
+        }
+      },
+
+      onEdgeClick: (edgeId, clientX, clientY) => {
+        app.#closeFloatingPanels();
+        app.#showEdgePanel(edgeId, clientX, clientY);
       }
     });
 
@@ -1069,6 +1089,56 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
         return RelationshipStore.createEdge(null, "doc-link", direction, opts);
       }
     });
+  }
+
+  // ─── Edge Click Panel ────────────────────────────────────────────────────────
+
+  /** Opens a panel to edit (type, direction) or delete an existing connection edge. */
+  #showEdgePanel(edgeId, clientX, clientY) {
+    const edge = RelationshipStore.getAll().edges[edgeId];
+    if (!edge) return;
+
+    const panel = document.createElement("div");
+    panel.className  = "mm-search-panel";
+    panel.style.left = `${clientX}px`;
+    panel.style.top  = `${clientY}px`;
+
+    panel.innerHTML = `
+      <div class="mm-panel-title">Edit Connection</div>
+      ${connectionTypePickerHTML()}
+      ${connectionDirectionPickerHTML()}
+      <div class="mm-panel-actions">
+        <button class="mm-btn-confirm">Save</button>
+        <button class="mm-btn-delete"><i class="fa-solid fa-trash-can"></i> Delete</button>
+        <button class="mm-btn-cancel">Cancel</button>
+      </div>
+    `;
+
+    // Pre-select the edge's current values
+    const typeSelect = panel.querySelector('select[name="mm_type"]');
+    if (edge.connectionTypeId) typeSelect.value = edge.connectionTypeId;
+
+    const dirInput = panel.querySelector(`input[name="mm_dir"][value="${edge.direction}"]`);
+    if (dirInput) dirInput.checked = true;
+
+    panel.querySelector(".mm-btn-confirm").addEventListener("click", async () => {
+      const direction        = readSelectedDirection(panel);
+      const connectionTypeId = readSelectedType(panel);
+      await RelationshipStore.updateEdgeConnectionType(edgeId, connectionTypeId);
+      await RelationshipStore.updateEdgeDirection(edgeId, direction);
+      this.#closeFloatingPanels();
+      this.#refreshMap();
+    });
+
+    panel.querySelector(".mm-btn-delete").addEventListener("click", async () => {
+      await RelationshipStore.deleteEdge(edgeId);
+      this.#closeFloatingPanels();
+      this.#refreshMap();
+    });
+
+    panel.querySelector(".mm-btn-cancel").addEventListener("click", () => this.#closeFloatingPanels());
+    this.#appendFloating(panel);
+    bindPanelDismiss(panel);
   }
 
   // ─── Map Refresh ─────────────────────────────────────────────────────────────

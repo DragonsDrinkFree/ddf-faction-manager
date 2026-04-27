@@ -171,6 +171,13 @@ export class MindMapRenderer {
   // background pan state
   #pan = null;
 
+  // connector drag state
+  #connHover     = null;   // node object the cursor is hovering over
+  #connDrag      = null;   // { fromKey, startPx } while dragging a new connection
+  #connectorDot  = null;   // <circle class="mm-connector-dot"> SVG element
+  #ghostLine     = null;   // <line class="mm-ghost-edge"> SVG element
+  #connTargetKey = null;   // nodeKey of the drop-target node (highlighted during drag)
+
   // ─── Force-directed layout state ──────────────────────────────────────────
   #forceAlpha          = 0;
   #forceVelocities     = new Map();  // nodeKey → { vx, vy }
@@ -220,6 +227,12 @@ export class MindMapRenderer {
     this.#svg.addEventListener("mousedown", this.#boundOnBgMousedown);
     this.#svg.addEventListener("mousemove", this.#boundMouseMove);
     this.#svg.addEventListener("mouseup",   this.#boundMouseUp);
+    this.#svg.addEventListener("mouseleave", () => {
+      if (this.#connectorDot) {
+        this.#connectorDot.style.display = "none";
+        this.#connHover = null;
+      }
+    });
   }
 
   destroy() {
@@ -237,6 +250,13 @@ export class MindMapRenderer {
     }
     this.#viewport = null;
     this.#drag     = null;
+    if (this.#connTargetKey) {
+      this.#svg?.querySelector(`[data-key="${CSS.escape(this.#connTargetKey)}"]`)
+               ?.classList.remove("mm-connect-target");
+    }
+    this.#connDrag      = null;
+    this.#connHover     = null;
+    this.#connTargetKey = null;
     this.#pan      = null;
     this._globalEdgeEls      = null;
     this._globalNodeEls      = null;
@@ -608,10 +628,12 @@ export class MindMapRenderer {
       const fromNode = nodeMap[desc.fromKey];
       const toNode   = nodeMap[desc.toKey];
       if (!fromNode || !toNode) return;
-      const el = this.#renderGlobalEdge(fromNode, toNode, desc);
+      const [el, hitArea] = this.#renderGlobalEdge(fromNode, toNode, desc);
       edgeGroup.appendChild(el);
+      edgeGroup.appendChild(hitArea);
       edgeEls[`${desc.fromKey}|${desc.toKey}|${idx}`] = {
         line: el,
+        hitArea,
         fromKey: desc.fromKey,
         toKey:   desc.toKey,
         curveOffset: desc.curveOffset ?? 0
@@ -626,7 +648,7 @@ export class MindMapRenderer {
       nodeEls[node.key] = { el: g, node };
     }
 
-    // Wire drag + left-click (POV toggle) + right-click on each node.
+    // Wire drag + connector hover + left-click (POV toggle) + right-click on each node.
     for (const { el, node } of Object.values(nodeEls)) {
       this.#wireNodeDrag(el, node, null, null, true);
 
@@ -1026,7 +1048,8 @@ export class MindMapRenderer {
         fromKey: edge.fromFactionId,
         toKey:   edge.toFactionId,
         style:   edge.direction === "two-way" ? "two-way" : "one-way",
-        color:   edge.color ?? typeColor ?? null
+        color:   edge.color ?? typeColor ?? null,
+        edgeId:  edge.id
       });
     }
 
@@ -1047,7 +1070,8 @@ export class MindMapRenderer {
         fromKey: edge.fromFactionId,
         toKey:   memberId ? NODE_KEY.forMember(memberId) : NODE_KEY.forDocument(edge.documentUuid),
         style:   edge.direction === "two-way" ? "two-way" : "one-way",
-        color:   edge.color ?? typeColor ?? null
+        color:   edge.color ?? typeColor ?? null,
+        edgeId:  edge.id
       });
     }
 
@@ -1063,7 +1087,8 @@ export class MindMapRenderer {
         fromKey: fromMemberId ? NODE_KEY.forMember(fromMemberId) : NODE_KEY.forDocument(edge.fromDocUuid),
         toKey:   toMemberId   ? NODE_KEY.forMember(toMemberId)   : NODE_KEY.forDocument(edge.documentUuid),
         style:   edge.direction === "two-way" ? "two-way" : "one-way",
-        color:   edge.color ?? typeColor ?? null
+        color:   edge.color ?? typeColor ?? null,
+        edgeId:  edge.id
       });
     }
 
@@ -1159,16 +1184,14 @@ export class MindMapRenderer {
     const { x1, y1, x2, y2 } = this.#edgeEndpoints(fromNode, toNode);
     const curveOffset = desc.curveOffset ?? 0;
     const cls = `mm-edge${desc.style === "dashed" ? " mm-dashed" : ""}`;
+    const isCurved = curveOffset !== 0;
+    const pathD = isCurved ? this.#curvedPath(x1, y1, x2, y2, curveOffset) : null;
 
     let el;
-    if (curveOffset === 0) {
+    if (!isCurved) {
       el = this.#el("line", { x1, y1, x2, y2, class: cls });
     } else {
-      el = this.#el("path", {
-        d:    this.#curvedPath(x1, y1, x2, y2, curveOffset),
-        class: cls,
-        fill: "none"
-      });
+      el = this.#el("path", { d: pathD, class: cls, fill: "none" });
     }
 
     if (desc.color) el.style.stroke = desc.color;
@@ -1177,7 +1200,24 @@ export class MindMapRenderer {
       el.setAttribute("marker-end",   "url(#arrow-end)");
       el.setAttribute("marker-start", "url(#arrow-start)");
     }
-    return el;
+
+    // Wide invisible hit area makes the edge easy to click
+    let hitArea;
+    if (!isCurved) {
+      hitArea = this.#el("line", { x1, y1, x2, y2, class: "mm-edge-hit" });
+    } else {
+      hitArea = this.#el("path", { d: pathD, class: "mm-edge-hit" });
+    }
+
+    if (desc.edgeId && this.#config.onEdgeClick) {
+      hitArea.style.cursor = "pointer";
+      hitArea.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.#config.onEdgeClick(desc.edgeId, e.clientX, e.clientY);
+      });
+    }
+
+    return [el, hitArea];
   }
 
   /**
@@ -1548,11 +1588,12 @@ export class MindMapRenderer {
 
     // ── Relationship edges ───────────────────────────────────────────────────
     if (this._globalEdgeEls) {
-      for (const { line, fromKey, toKey, curveOffset } of Object.values(this._globalEdgeEls)) {
+      for (const { line, hitArea, fromKey, toKey, curveOffset } of Object.values(this._globalEdgeEls)) {
         if (filterKey != null && fromKey !== filterKey && toKey !== filterKey) continue;
         const fn = nodeMap[fromKey], tn = nodeMap[toKey];
         if (!fn || !tn) continue;
         updateEdgeLine(line, fn, tn, curveOffset);
+        if (hitArea) updateEdgeLine(hitArea, fn, tn, curveOffset);
       }
     }
 
@@ -1823,6 +1864,32 @@ export class MindMapRenderer {
   // ─── Unified Mouse Handlers ───────────────────────────────────────────────────
 
   #onMouseMove(e) {
+    // Handle connection drag (ghost edge + target highlight)
+    if (this.#connDrag) {
+      const px = this.#svgPx(e);
+      this.#ghostLine.setAttribute("x2", px.x);
+      this.#ghostLine.setAttribute("y2", px.y);
+
+      // Detect which node is under the cursor
+      const underEl  = document.elementFromPoint(e.clientX, e.clientY);
+      const nodeEl   = underEl?.closest?.(".mm-node");
+      const overKey  = nodeEl?.dataset?.key ?? null;
+      const newTarget = (overKey && overKey !== this.#connDrag.fromKey) ? overKey : null;
+
+      if (newTarget !== this.#connTargetKey) {
+        if (this.#connTargetKey) {
+          this.#svg.querySelector(`[data-key="${CSS.escape(this.#connTargetKey)}"]`)
+                   ?.classList.remove("mm-connect-target");
+        }
+        this.#connTargetKey = newTarget;
+        if (this.#connTargetKey) {
+          this.#svg.querySelector(`[data-key="${CSS.escape(this.#connTargetKey)}"]`)
+                   ?.classList.add("mm-connect-target");
+        }
+      }
+      return;
+    }
+
     // Handle background pan
     if (this.#pan) {
       this.#transform.x = this.#pan.startPanX + (e.clientX - this.#pan.startClientX);
@@ -1832,7 +1899,7 @@ export class MindMapRenderer {
     }
 
     // Handle node drag
-    if (!this.#drag) return;
+    if (this.#drag) {
     const pos  = this.#svgCoords(e);
     const newX = pos.x - this.#drag.offsetX;
     const newY = pos.y - this.#drag.offsetY;
@@ -1874,9 +1941,33 @@ export class MindMapRenderer {
         el.setAttribute("y2", y2);
       }
     }
+    return;
+    }
+
+    // Update connector dot position (global mode only, no active drag/pan)
+    if (this._globalNodeMap) this.#updateHoverConnector(e);
   }
 
   #onMouseUp(e) {
+    // End connection drag
+    if (this.#connDrag) {
+      const fromKey = this.#connDrag.fromKey;
+      this.#connDrag = null;
+      this.#ghostLine.style.display    = "none";
+      this.#connectorDot.style.display = "none";
+      this.#svg.style.cursor = "";
+
+      // Clear target highlight and fire callback if over a valid target
+      const toKey = this.#connTargetKey;
+      if (this.#connTargetKey) {
+        this.#svg.querySelector(`[data-key="${CSS.escape(this.#connTargetKey)}"]`)
+                 ?.classList.remove("mm-connect-target");
+        this.#connTargetKey = null;
+      }
+      if (toKey) this.#config.onConnectNodes?.(fromKey, toKey, e.clientX, e.clientY);
+      return;
+    }
+
     // End pan
     if (this.#pan) {
       this.#pan = null;
@@ -2007,6 +2098,42 @@ export class MindMapRenderer {
     defs.appendChild(this.#makeArrowMarker("arrow-start", "M8,0 M8,0 L8,6 L0,3 z", 1));
     svg.appendChild(defs);
 
+    // Connector overlay — lives outside #viewport so it's in screen-px space,
+    // unaffected by pan/zoom. Holds the hover dot and the ghost drag edge.
+    this.#ghostLine = this.#el("line", {
+      class: "mm-ghost-edge",
+      "pointer-events": "none",
+      style: "display:none"
+    });
+    this.#connectorDot = this.#el("circle", {
+      class: "mm-connector-dot",
+      r: 7,
+      style: "display:none"
+    });
+
+    const connLayer = this.#el("g", { class: "mm-connector-layer" });
+    connLayer.appendChild(this.#ghostLine);
+    connLayer.appendChild(this.#connectorDot);
+    svg.appendChild(connLayer);
+
+    // Wire connector dot drag — mousedown starts a connection drag
+    this.#connectorDot.addEventListener("mousedown", (e) => {
+      if (e.button !== 0 || !this.#connHover) return;
+      e.stopPropagation();
+      const startPx = {
+        x: parseFloat(this.#connectorDot.getAttribute("cx")),
+        y: parseFloat(this.#connectorDot.getAttribute("cy"))
+      };
+      this.#connDrag = { fromKey: this.#connHover.key, startPx };
+      this.#ghostLine.setAttribute("x1", startPx.x);
+      this.#ghostLine.setAttribute("y1", startPx.y);
+      this.#ghostLine.setAttribute("x2", startPx.x);
+      this.#ghostLine.setAttribute("y2", startPx.y);
+      this.#ghostLine.style.display   = "";
+      this.#connectorDot.style.display = "none";
+      this.#svg.style.cursor = "crosshair";
+    });
+
     return svg;
   }
 
@@ -2064,6 +2191,58 @@ export class MindMapRenderer {
       x: (sx - this.#transform.x) / this.#transform.scale,
       y: (sy - this.#transform.y) / this.#transform.scale
     };
+  }
+
+  /** Convert a mouse event to SVG pixel coordinates (screen-space, no world transform). */
+  #svgPx(event) {
+    const rect = this.#svg.getBoundingClientRect();
+    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+  }
+
+  /** Convert a world-space point to SVG pixel space (accounts for pan/zoom). */
+  #worldToSvgPx(wx, wy) {
+    const { x, y, scale } = this.#transform;
+    return { x: wx * scale + x, y: wy * scale + y };
+  }
+
+  /**
+   * Hover-connector detection driven by the SVG-level mousemove.
+   * Finds whichever node the cursor is inside, then positions the connector dot
+   * at the circumference point nearest the cursor. Because this runs off the
+   * SVG's own mousemove (rather than per-node mouseenter/leave), there is no
+   * "gap" between the node shape and the dot that would cause it to disappear
+   * when the user tries to click it.
+   */
+  #updateHoverConnector(e) {
+    // When the mouse is on the connector dot itself, leave it exactly where it is.
+    if (e.target === this.#connectorDot) return;
+
+    const worldPos = this.#svgCoords(e);
+    let bestNode = null;
+    let bestDist = Infinity;
+
+    for (const node of Object.values(this._globalNodeMap ?? {})) {
+      const r  = this.#nodeRadius(node);
+      const dx = worldPos.x - node.x;
+      const dy = worldPos.y - node.y;
+      const d  = Math.sqrt(dx * dx + dy * dy);
+      if (d <= r && d < bestDist) { bestDist = d; bestNode = node; }
+    }
+
+    if (bestNode) {
+      this.#connHover = bestNode;
+      const r   = this.#nodeRadius(bestNode);
+      const dx  = worldPos.x - bestNode.x;
+      const dy  = worldPos.y - bestNode.y;
+      const len = Math.sqrt(dx * dx + dy * dy) || 1;
+      const px  = this.#worldToSvgPx(bestNode.x + dx / len * r, bestNode.y + dy / len * r);
+      this.#connectorDot.setAttribute("cx", px.x);
+      this.#connectorDot.setAttribute("cy", px.y);
+      this.#connectorDot.style.display = "";
+    } else {
+      this.#connHover = null;
+      this.#connectorDot.style.display = "none";
+    }
   }
 
   #el(tag, attrs = {}) {
