@@ -162,7 +162,8 @@ export class FactionStore {
       pageId: pages[0].id,
       stats, tags: [], secrets: [], rumors: [],
       kind,
-      sandboxPartyId: opts.sandboxPartyId ?? null
+      sandboxPartyId: opts.sandboxPartyId ?? null,
+      color: opts.color ?? ""
     };
     const all = this.getAll();
     all[id] = faction;

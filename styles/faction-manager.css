@@ -2606,6 +2606,113 @@
   stroke-width: 1.5;
 }
 
+/* ── Party hexagon node (global map) ───────────────────────────────── */
+.mm-node-type-party-global .mm-shape {
+  fill: color-mix(in srgb, #3d6b55 65%, var(--color-bg-option));
+  stroke: #5a9e7e;
+  stroke-width: 2;
+  opacity: 0.9;
+}
+
+/* Party-member inner orbit ring */
+.mm-party-member-ring {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.45);
+  stroke-width: 1;
+  stroke-dasharray: 3 5;
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+/* Party-retainer outer orbit ring */
+.mm-party-retainer-ring {
+  fill: none;
+  stroke: rgba(220, 180, 100, 0.5);
+  stroke-width: 1;
+  stroke-dasharray: 2 6;
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+/* Party member/retainer spoke lines */
+.mm-party-member-spoke,
+.mm-party-retainer-spoke {
+  stroke: rgba(255, 255, 255, 0.18);
+  stroke-width: 0.5;
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* Party-member diamond nodes (inner ring, green tint) */
+.mm-node-type-party-member-actor .mm-shape {
+  fill: color-mix(in srgb, #3d6b55 55%, var(--color-bg-option));
+  stroke: #5a9e7e;
+  stroke-width: 1.5;
+}
+.mm-node-type-party-member-other .mm-shape {
+  fill: color-mix(in srgb, var(--color-bg-option) 60%, #3d6b55);
+  stroke: #5a9e7e;
+  stroke-width: 1.25;
+}
+
+/* Party-retainer diamond nodes (outer ring, gold-ish tint) */
+.mm-node-type-party-retainer-actor .mm-shape {
+  fill: color-mix(in srgb, #8a6f2e 55%, var(--color-bg-option));
+  stroke: #c4a23e;
+  stroke-width: 1.5;
+}
+.mm-node-type-party-retainer-other .mm-shape {
+  fill: color-mix(in srgb, var(--color-bg-option) 60%, #8a6f2e);
+  stroke: #c4a23e;
+  stroke-width: 1.25;
+}
+
+/* Party member/retainer node labels */
+.mm-node-type-party-member-actor .mm-node-label,
+.mm-node-type-party-member-other .mm-node-label,
+.mm-node-type-party-retainer-actor .mm-node-label,
+.mm-node-type-party-retainer-other .mm-node-label {
+  font-size: 9px;
+  opacity: 0.9;
+}
+
+/* Left-panel party rows */
+.ddf-global-relationships .global-rel-party-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  cursor: pointer;
+  border-radius: 3px;
+  font-size: 0.85rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ddf-global-relationships .global-rel-party-item:hover    { background: var(--color-hover-bg); }
+.ddf-global-relationships .global-rel-party-item.selected { background: color-mix(in srgb, #FFD700 20%, var(--color-bg-option)); font-weight: bold; }
+
+/* Party node color picker row in Party Sheet overview */
+.faction-overview-header .party-color-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+.party-color-label {
+  font-size: 0.8rem;
+  opacity: 0.75;
+}
+.party-color-picker {
+  width: 36px;
+  height: 24px;
+  padding: 1px 2px;
+  border: 1px solid var(--color-border-primary, #555);
+  border-radius: 3px;
+  cursor: pointer;
+  background: none;
+}
+
 /* ═══════════════════════════════════════════════════════════════════
    INLINE SETTINGS CONTROLS  (.ddf-inline-stat-editor)
    Injected into Foundry's native Game Settings panel via hook.
@@ -2975,13 +3082,28 @@
   text-shadow: 0 0 6px var(--color-shadow-primary);
 }
 
-/* Folder contents — left border tinted with folder color (same as native .subdirectory) */
+/* Body wrapper: holds the faction list + child folders; carries the colored left border */
+#ddfFactions .ddf-folder-body {
+  border-left: 6px solid var(--color-dark-1, #111);
+  /* border-left-color set via inline style when color present */
+}
+
+/* Nested folder sections sit inside .ddf-folder-body — no extra top separator */
+#ddfFactions .ddf-folder-body > .ddf-folder-section {
+  border-top: none;
+}
+
+/* Nested folder headers are not sticky (depth is unpredictable) */
+#ddfFactions .ddf-folder-body .ddf-folder-header {
+  position: relative;
+  top: auto;
+}
+
+/* Folder contents — the factions <ol> inside the body wrapper */
 #ddfFactions .ddf-folder-contents {
   list-style: none;
   margin: 0;
   padding: 0;
-  border-left: 6px solid var(--color-dark-1, #111);
-  /* border-left-color set via inline style when color present */
 }
 
 #ddfFactions .ddf-unfiled-section {

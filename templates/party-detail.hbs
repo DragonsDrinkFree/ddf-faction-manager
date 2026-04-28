@@ -16,9 +16,17 @@
     <section class="tab overview {{#if (eq activeTab "overview")}}active{{/if}}" data-tab="overview">
       {{#if selectedFaction}}
 
-        {{!-- Header: party name --}}
+        {{!-- Header: party name + node color --}}
         <div class="faction-overview-header">
           <h2 class="faction-overview-title">{{selectedFaction.name}}</h2>
+          <div class="party-color-row">
+            <label class="party-color-label" title="Map node color">
+              <i class="fa-solid fa-palette"></i> Node Color
+            </label>
+            <input type="color" name="partyColor"
+                   value="{{#if selectedFaction.color}}{{selectedFaction.color}}{{else}}#3d6b55{{/if}}"
+                   class="party-color-picker" />
+          </div>
         </div>
 
         {{!-- Tags bar --}}

@@ -101,21 +101,27 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
       });
     };
 
-    // ── Step 3: build sections — each folder uses its own sorting field ───────
-    const sections = [];
-    for (const folder of Object.values(folders).sort((a, b) => a.name.localeCompare(b.name))) {
-      const raw      = folderGroups[folder.id] ?? [];
-      const factions = (folder.sorting ?? "a") === "m" ? manualSort(raw) : raw;
-      sections.push({
-        type:      "folder",
-        id:        folder.id,
-        name:      folder.name,
-        color:     folder.color  ?? "",
-        sorting:   folder.sorting ?? "a",
-        collapsed: folder.collapsed,
-        factions
-      });
-    }
+    // ── Step 3: build recursive folder tree — each folder knows its children ──
+    const buildFolderTree = (parentFolderId) => {
+      return Object.values(folders)
+        .filter(f => (f.parentFolderId ?? null) === parentFolderId)
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map(f => {
+          const raw = folderGroups[f.id] ?? [];
+          return {
+            type:         "folder",
+            id:           f.id,
+            name:         f.name,
+            color:        f.color    ?? "",
+            sorting:      f.sorting  ?? "a",
+            collapsed:    f.collapsed,
+            factions:     (f.sorting ?? "a") === "m" ? manualSort(raw) : raw,
+            childFolders: buildFolderTree(f.id)
+          };
+        });
+    };
+
+    const sections = buildFolderTree(null);
 
     // Unfiled factions use the global sidebar sort toggle
     let unfiledSorted = sortMode === "manual" ? manualSort(unfiledFactions) : unfiledFactions;
@@ -316,6 +322,20 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
       });
     });
 
+    // ── Create sub-folder ─────────────────────────────────────────────────────
+    el.querySelectorAll("[data-action='createSubFolder']").forEach(btn => {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const folderId = btn.closest(".ddf-folder-section[data-folder-id]")?.dataset.folderId;
+        if (!folderId) return;
+        const folderName = FolderStore.getFolders()[folderId]?.name ?? "folder";
+        const name = await this.#promptName(`New Sub-folder in "${folderName}"`, "Name");
+        if (!name) return;
+        await FolderStore.createFolder(name, { parentFolderId: folderId });
+        this.render();
+      });
+    });
+
     // ── Folder rename/edit ────────────────────────────────────────────────────
     el.querySelectorAll("[data-action='renameFolder']").forEach(btn => {
       btn.addEventListener("click", (e) => {
@@ -332,10 +352,18 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
         e.stopPropagation();
         const folderId = btn.closest(".ddf-folder-section[data-folder-id]")?.dataset.folderId;
         if (!folderId) return;
-        const folder    = FolderStore.getFolders()[folderId];
+        const folder = FolderStore.getFolders()[folderId];
+        const childFolders = Object.values(FolderStore.getFolders())
+          .filter(f => (f.parentFolderId ?? null) === folderId);
+        let content = `<p>Delete folder <strong>${foundry.utils.escapeHTML(folder?.name ?? "")}</strong>?</p>`;
+        if (childFolders.length) {
+          const n = childFolders.length;
+          content += `<p>${n} sub-folder${n !== 1 ? "s" : ""} will be promoted to this folder's parent.</p>`;
+        }
+        content += `<p>Factions inside will become unfiled.</p>`;
         const confirmed = await foundry.applications.api.DialogV2.confirm({
           window: { title: "Delete Folder" },
-          content: `<p>Delete folder <strong>${folder?.name ?? ""}</strong>? Factions inside will become unfiled.</p>`
+          content
         });
         if (!confirmed) return;
         await FolderStore.deleteFolder(folderId);

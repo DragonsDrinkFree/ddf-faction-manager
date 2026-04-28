@@ -12,11 +12,14 @@ const R = {
   memberNode: 26,  // member orbit nodes
   docGlobal:  30   // document nodes on the global map
 };
-const INNER_RING       = 145;
-const OUTER_RING       = 280;
-const ORBIT_GAP        = 20;  // minimum gap between parent edge and sub-faction edge
-const MEMBER_NODE_R    = 26;  // radius of member orbit nodes
-const MEMBER_ORBIT_GAP = 15;  // gap between faction node edge and member ring
+const INNER_RING            = 145;
+const OUTER_RING            = 280;
+const ORBIT_GAP             = 20;  // minimum gap between parent edge and sub-faction edge
+const MEMBER_NODE_R         = 26;  // radius of faction-member orbit nodes
+const MEMBER_ORBIT_GAP      = 15;  // gap between faction node edge and member ring
+const PARTY_MEMBER_NODE_R   = 24;  // radius of party-member/retainer orbit nodes
+const PARTY_MEMBER_GAP      = 15;  // gap between party node edge and member ring
+const PARTY_RETAINER_GAP    = 18;  // gap between member ring outer edge and retainer ring
 
 /**
  * Preset radii (px) for the Small / Medium / Large size buttons.
@@ -43,14 +46,19 @@ const NODE_TYPE = {
   SIMPLE:         "simple",         // misc endpoint (not a known type)
 
   // Global-map node kinds
-  POV:            "pov",            // currently-selected faction (global)
-  FACTION_GLOBAL: "faction-global", // non-POV faction on the global map
-  DOC_ACTOR:      "doc-actor",      // actor document on the global map
-  DOC_SCENE:      "doc-scene",      // scene document on the global map
-  DOC_JOURNAL:    "doc-journal",    // journal document on the global map
-  DOC_OTHER:      "doc-other",      // any other document kind
-  MEMBER_ACTOR:   "member-actor",   // member diamond with actor reference
-  MEMBER_OTHER:   "member-other",   // member diamond without actor reference
+  POV:                   "pov",                   // currently-selected faction (global)
+  FACTION_GLOBAL:        "faction-global",         // non-POV faction on the global map
+  PARTY_GLOBAL:          "party-global",           // adventuring party hexagon (global)
+  DOC_ACTOR:             "doc-actor",              // actor document on the global map
+  DOC_SCENE:             "doc-scene",              // scene document on the global map
+  DOC_JOURNAL:           "doc-journal",            // journal document on the global map
+  DOC_OTHER:             "doc-other",              // any other document kind
+  MEMBER_ACTOR:          "member-actor",           // member diamond with actor reference
+  MEMBER_OTHER:          "member-other",           // member diamond without actor reference
+  PARTY_MEMBER_ACTOR:    "party-member-actor",     // party-member diamond with actor reference
+  PARTY_MEMBER_OTHER:    "party-member-other",     // party-member diamond without actor reference
+  PARTY_RETAINER_ACTOR:  "party-retainer-actor",   // party-retainer diamond with actor reference
+  PARTY_RETAINER_OTHER:  "party-retainer-other",   // party-retainer diamond without actor reference
 };
 
 /**
@@ -62,10 +70,14 @@ const NODE_TYPE = {
  * Exported helpers keep this convention in one place so callers don't hand-slice.
  */
 export const NODE_KEY = {
-  DOC_PREFIX:    "doc_",
-  MEMBER_PREFIX: "member_",
-  forDocument(uuid)   { return `${NODE_KEY.DOC_PREFIX}${uuid}`; },
-  forMember(memberId) { return `${NODE_KEY.MEMBER_PREFIX}${memberId}`; },
+  DOC_PREFIX:             "doc_",
+  MEMBER_PREFIX:          "member_",
+  PARTY_MEMBER_PREFIX:    "pmember_",
+  PARTY_RETAINER_PREFIX:  "pretainer_",
+  forDocument(uuid)        { return `${NODE_KEY.DOC_PREFIX}${uuid}`; },
+  forMember(memberId)      { return `${NODE_KEY.MEMBER_PREFIX}${memberId}`; },
+  forPartyMember(id)       { return `${NODE_KEY.PARTY_MEMBER_PREFIX}${id}`; },
+  forPartyRetainer(id)     { return `${NODE_KEY.PARTY_RETAINER_PREFIX}${id}`; },
 };
 
 /**
@@ -78,6 +90,12 @@ export function parseNodeKey(nodeKey) {
   if (nodeKey.startsWith(NODE_KEY.DOC_PREFIX)) {
     return { kind: "document", uuid: nodeKey.slice(NODE_KEY.DOC_PREFIX.length) };
   }
+  if (nodeKey.startsWith(NODE_KEY.PARTY_RETAINER_PREFIX)) {
+    return { kind: "party-retainer", id: nodeKey.slice(NODE_KEY.PARTY_RETAINER_PREFIX.length) };
+  }
+  if (nodeKey.startsWith(NODE_KEY.PARTY_MEMBER_PREFIX)) {
+    return { kind: "party-member", id: nodeKey.slice(NODE_KEY.PARTY_MEMBER_PREFIX.length) };
+  }
   if (nodeKey.startsWith(NODE_KEY.MEMBER_PREFIX)) {
     return { kind: "member", memberId: nodeKey.slice(NODE_KEY.MEMBER_PREFIX.length) };
   }
@@ -86,19 +104,24 @@ export function parseNodeKey(nodeKey) {
 
 /** Default display radius by node.type. Used when node.radius is not set. */
 const NODE_TYPE_RADIUS = {
-  [NODE_TYPE.CENTRAL]:        R.central,
-  [NODE_TYPE.SUBFACTION]:     R.subfaction,
-  [NODE_TYPE.FACTION]:        R.faction,
-  [NODE_TYPE.POV]:            R.pov,
-  [NODE_TYPE.FACTION_GLOBAL]: R.factionGlobal,
-  [NODE_TYPE.DOCUMENT]:       Math.max(R.document.rx, R.document.ry),
-  [NODE_TYPE.DOC_ACTOR]:      R.docGlobal,
-  [NODE_TYPE.DOC_SCENE]:      R.docGlobal,
-  [NODE_TYPE.DOC_JOURNAL]:    R.docGlobal,
-  [NODE_TYPE.DOC_OTHER]:      R.docGlobal,
-  [NODE_TYPE.MEMBER_ACTOR]:   MEMBER_NODE_R,
-  [NODE_TYPE.MEMBER_OTHER]:   MEMBER_NODE_R,
-  [NODE_TYPE.SIMPLE]:         Math.max(R.simple.rx, R.simple.ry),
+  [NODE_TYPE.CENTRAL]:               R.central,
+  [NODE_TYPE.SUBFACTION]:            R.subfaction,
+  [NODE_TYPE.FACTION]:               R.faction,
+  [NODE_TYPE.POV]:                   R.pov,
+  [NODE_TYPE.FACTION_GLOBAL]:        R.factionGlobal,
+  [NODE_TYPE.PARTY_GLOBAL]:          R.factionGlobal,
+  [NODE_TYPE.DOCUMENT]:              Math.max(R.document.rx, R.document.ry),
+  [NODE_TYPE.DOC_ACTOR]:             R.docGlobal,
+  [NODE_TYPE.DOC_SCENE]:             R.docGlobal,
+  [NODE_TYPE.DOC_JOURNAL]:           R.docGlobal,
+  [NODE_TYPE.DOC_OTHER]:             R.docGlobal,
+  [NODE_TYPE.MEMBER_ACTOR]:          MEMBER_NODE_R,
+  [NODE_TYPE.MEMBER_OTHER]:          MEMBER_NODE_R,
+  [NODE_TYPE.PARTY_MEMBER_ACTOR]:    PARTY_MEMBER_NODE_R,
+  [NODE_TYPE.PARTY_MEMBER_OTHER]:    PARTY_MEMBER_NODE_R,
+  [NODE_TYPE.PARTY_RETAINER_ACTOR]:  PARTY_MEMBER_NODE_R,
+  [NODE_TYPE.PARTY_RETAINER_OTHER]:  PARTY_MEMBER_NODE_R,
+  [NODE_TYPE.SIMPLE]:                Math.max(R.simple.rx, R.simple.ry),
 };
 
 /**
@@ -112,12 +135,14 @@ const FORCE = {
   springRest:        180,   // edge rest length in px
 
   // ── Orbit constraints ──────────────────────────────────────────────────────
-  orbitSpringK:      0.35,  // radial spring for sub-faction orbits (stiff — keep tight)
-  memberOrbitK:      0.25,  // radial spring for member orbits (stiff — keep tight)
+  orbitSpringK:         0.35,  // radial spring for sub-faction orbits (stiff — keep tight)
+  memberOrbitK:         0.25,  // radial spring for faction-member orbits
+  partyMemberOrbitK:    0.25,  // radial spring for party-member inner ring
+  partyRetainerOrbitK:  0.22,  // radial spring for party-retainer outer ring
 
   // ── Sibling repulsion fractions of base repulsion ─────────────────────────
-  siblingSubFacMult: 0.35,  // sub-faction siblings repel each other (mid-strength)
-  siblingMemberMult: 0.12,  // member siblings repel each other (gentle)
+  siblingSubFacMult:    0.35,  // sub-faction siblings repel each other (mid-strength)
+  siblingMemberMult:    0.12,  // member/party-member siblings repel each other (gentle)
 
   // ── Document node fraction ─────────────────────────────────────────────────
   docRepulsionMult:  0.30,  // docs repel other nodes at this fraction
@@ -179,14 +204,16 @@ export class MindMapRenderer {
   #connTargetKey = null;   // nodeKey of the drop-target node (highlighted during drag)
 
   // ─── Force-directed layout state ──────────────────────────────────────────
-  #forceAlpha          = 0;
-  #forceVelocities     = new Map();  // nodeKey → { vx, vy }
-  #forceRafId          = null;
-  #forceMemberRadii    = new Map();  // nodeKey → orbit radius (members)
-  #forceSubFacRadii    = new Map();  // nodeKey → orbit radius (sub-factions)
-  #nodeClusterKey      = new Map();  // nodeKey → top-level faction key for cluster grouping
-  #forceActive         = false;
-  #forceLevel          = 3;
+  #forceAlpha               = 0;
+  #forceVelocities          = new Map();  // nodeKey → { vx, vy }
+  #forceRafId               = null;
+  #forceMemberRadii         = new Map();  // nodeKey → orbit radius (faction members)
+  #forceSubFacRadii         = new Map();  // nodeKey → orbit radius (sub-factions)
+  #forcePartyMemberRadii    = new Map();  // nodeKey → orbit radius (party members inner ring)
+  #forcePartyRetainerRadii  = new Map();  // nodeKey → orbit radius (party retainers outer ring)
+  #nodeClusterKey           = new Map();  // nodeKey → top-level faction key for cluster grouping
+  #forceActive              = false;
+  #forceLevel               = 3;
 
   // bound listener refs for cleanup
   #boundMouseMove;
@@ -258,15 +285,22 @@ export class MindMapRenderer {
     this.#connHover     = null;
     this.#connTargetKey = null;
     this.#pan      = null;
-    this._globalEdgeEls      = null;
-    this._globalNodeEls      = null;
-    this._globalNodeMap      = null;
-    this._orbitRingEls       = null;
-    this._spokeLinkEls       = null;
-    this._orbitRadii         = null;
-    this._memberOrbitRingEls = null;
-    this._memberSpokeEls     = null;
+    this._globalEdgeEls              = null;
+    this._globalNodeEls              = null;
+    this._globalNodeMap              = null;
+    this._orbitRingEls               = null;
+    this._spokeLinkEls               = null;
+    this._orbitRadii                 = null;
+    this._memberOrbitRingEls         = null;
+    this._memberSpokeEls             = null;
+    this._partyMemberRingEls         = null;
+    this._partyMemberSpokeEls        = null;
+    this._partyRetainerRingEls       = null;
+    this._partyRetainerSpokeEls      = null;
     this.#forceSubFacRadii.clear();
+    this.#forceMemberRadii.clear();
+    this.#forcePartyMemberRadii.clear();
+    this.#forcePartyRetainerRadii.clear();
     this.#nodeClusterKey.clear();
   }
 
@@ -508,20 +542,25 @@ export class MindMapRenderer {
     // Populate orbit radii for the force simulation from actual node positions
     this.#forceMemberRadii.clear();
     this.#forceSubFacRadii.clear();
+    this.#forcePartyMemberRadii.clear();
+    this.#forcePartyRetainerRadii.clear();
     for (const node of nodes) {
       if (!node.parentId) continue;
       const parent = nodeMap[node.parentId];
       if (!parent) continue;
       const r = Math.sqrt((node.x - parent.x) ** 2 + (node.y - parent.y) ** 2);
-      if (node.isMember)      this.#forceMemberRadii.set(node.key, r);
-      else if (node.isSubFaction) this.#forceSubFacRadii.set(node.key, r);
+      if      (node.isMember)         this.#forceMemberRadii.set(node.key, r);
+      else if (node.isSubFaction)     this.#forceSubFacRadii.set(node.key, r);
+      else if (node.isPartyMember)    this.#forcePartyMemberRadii.set(node.key, r);
+      else if (node.isPartyRetainer)  this.#forcePartyRetainerRadii.set(node.key, r);
     }
 
     // Cluster-key map: each node maps to the top-level faction it belongs to.
     // Used so cluster-level repulsion can account for the full footprint of a system.
     this.#nodeClusterKey.clear();
     for (const node of nodes) {
-      if (!node.isSubFaction && !node.isMember && !node.isDocument) {
+      if (!node.isSubFaction && !node.isMember && !node.isDocument
+          && !node.isPartyMember && !node.isPartyRetainer) {
         this.#nodeClusterKey.set(node.key, node.key);
       }
     }
@@ -622,6 +661,70 @@ export class MindMapRenderer {
       }
     }
 
+    // Render party-member inner orbit rings + spokes.
+    this._partyMemberRingEls   = {};
+    this._partyMemberSpokeEls  = {};
+    const partyMembersByNode = {};
+    for (const node of nodes) {
+      if (!node.isPartyMember) continue;
+      (partyMembersByNode[node.parentId] ??= []).push(node);
+    }
+    for (const [parentId, pmNodes] of Object.entries(partyMembersByNode)) {
+      const parentNode = nodeMap[parentId];
+      if (!parentNode) continue;
+      const avgR = pmNodes.reduce((sum, n) =>
+        sum + Math.sqrt((n.x - parentNode.x) ** 2 + (n.y - parentNode.y) ** 2)
+      , 0) / Math.max(pmNodes.length, 1);
+
+      const pmRing = this.#el("circle", {
+        cx: parentNode.x, cy: parentNode.y, r: avgR,
+        class: "mm-party-member-ring"
+      });
+      orbitGroup.appendChild(pmRing);
+      this._partyMemberRingEls[parentId] = pmRing;
+
+      for (const pmNode of pmNodes) {
+        const { x1, y1, x2, y2 } = this.#edgeEndpoints(parentNode, pmNode);
+        const spoke = this.#el("line", { x1, y1, x2, y2, class: "mm-party-member-spoke" });
+        spokeGroup.appendChild(spoke);
+        this._partyMemberSpokeEls[`${parentId}|${pmNode.key}`] = {
+          line: spoke, parentKey: parentId, memberKey: pmNode.key
+        };
+      }
+    }
+
+    // Render party-retainer outer orbit rings + spokes.
+    this._partyRetainerRingEls  = {};
+    this._partyRetainerSpokeEls = {};
+    const partyRetainersByNode = {};
+    for (const node of nodes) {
+      if (!node.isPartyRetainer) continue;
+      (partyRetainersByNode[node.parentId] ??= []).push(node);
+    }
+    for (const [parentId, prNodes] of Object.entries(partyRetainersByNode)) {
+      const parentNode = nodeMap[parentId];
+      if (!parentNode) continue;
+      const avgR = prNodes.reduce((sum, n) =>
+        sum + Math.sqrt((n.x - parentNode.x) ** 2 + (n.y - parentNode.y) ** 2)
+      , 0) / Math.max(prNodes.length, 1);
+
+      const prRing = this.#el("circle", {
+        cx: parentNode.x, cy: parentNode.y, r: avgR,
+        class: "mm-party-retainer-ring"
+      });
+      orbitGroup.appendChild(prRing);
+      this._partyRetainerRingEls[parentId] = prRing;
+
+      for (const prNode of prNodes) {
+        const { x1, y1, x2, y2 } = this.#edgeEndpoints(parentNode, prNode);
+        const spoke = this.#el("line", { x1, y1, x2, y2, class: "mm-party-retainer-spoke" });
+        spokeGroup.appendChild(spoke);
+        this._partyRetainerSpokeEls[`${parentId}|${prNode.key}`] = {
+          line: spoke, parentKey: parentId, memberKey: prNode.key
+        };
+      }
+    }
+
     // Render edges (behind nodes)
     // Use an indexed key to support multiple edges between the same node pair.
     const edgeEls = {};
@@ -693,15 +796,18 @@ export class MindMapRenderer {
       posMap[key] = pos;
 
       const isPOV         = key === povFactionId;
-      const resolvedColor = this.#resolveGlobalNodeColor(key, isPOV);
+      const isParty       = faction.kind === "party";
+      const resolvedColor = isPOV ? "#FFD700"
+        : isParty ? (faction.color || null)
+        : this.#resolveGlobalNodeColor(key, isPOV);
       const radius        = this.#computeNodeRadius(faction);
       nodes.push({
         key, label: faction.name,
-        type: isPOV ? "pov" : "faction-global",
+        type: isPOV ? "pov" : isParty ? "party-global" : "faction-global",
         x: pos.x, y: pos.y,
         edge: null, edgeStyle: null,
         resolvedColor, radius,
-        isSubFaction: false
+        isSubFaction: false, isParty
       });
     });
 
@@ -735,15 +841,18 @@ export class MindMapRenderer {
           posMap[key] = pos;
 
           const isPOV         = key === povFactionId;
-          const resolvedColor = this.#resolveGlobalNodeColor(key, isPOV);
+          const isParty       = faction.kind === "party";
+          const resolvedColor = isPOV ? "#FFD700"
+            : isParty ? (faction.color || null)
+            : this.#resolveGlobalNodeColor(key, isPOV);
           const radius        = this.#computeNodeRadius(faction);
           nodes.push({
             key, label: faction.name,
-            type: isPOV ? "pov" : "faction-global",
+            type: isPOV ? "pov" : isParty ? "party-global" : "faction-global",
             x: pos.x, y: pos.y,
             edge: null, edgeStyle: null,
             resolvedColor, radius,
-            isSubFaction: true,
+            isSubFaction: true, isParty,
             parentId: faction.parentId
           });
         }
@@ -896,6 +1005,93 @@ export class MindMapRenderer {
           isMember:     true,
           isDocument:   false,
           parentId:     factionId
+        });
+      });
+    }
+
+    // ── Pass 5: party-member nodes orbit their party (inner ring) ─────────────
+    const partyMembersByParty = {};
+    for (const m of this.#config.partyMembers ?? []) {
+      if (m.factionId) (partyMembersByParty[m.factionId] ??= []).push(m);
+    }
+    for (const [partyId, members] of Object.entries(partyMembersByParty)) {
+      const parentPos = posMap[partyId];
+      if (!parentPos) continue;
+      const partyFaction = allFactions[partyId];
+      const partyR = partyFaction ? this.#computeNodeRadius(partyFaction) : R.factionGlobal;
+
+      let orbitR = partyR + PARTY_MEMBER_GAP + PARTY_MEMBER_NODE_R;
+      for (const m of members) {
+        const sp = saved[NODE_KEY.forPartyMember(m.id)];
+        if (sp) { orbitR = Math.sqrt((sp.x - parentPos.x) ** 2 + (sp.y - parentPos.y) ** 2); break; }
+      }
+
+      members.forEach((m, i) => {
+        const key   = NODE_KEY.forPartyMember(m.id);
+        const angle = (2 * Math.PI * i / Math.max(members.length, 1)) - Math.PI / 2;
+        const pos   = saved[key] ?? {
+          x: parentPos.x + orbitR * Math.cos(angle),
+          y: parentPos.y + orbitR * Math.sin(angle)
+        };
+        posMap[key] = pos;
+        nodes.push({
+          key,
+          label:          m.name ?? "Member",
+          type:           m.actorUuid ? "party-member-actor" : "party-member-other",
+          x: pos.x, y: pos.y,
+          edge: null, edgeStyle: null,
+          resolvedColor:  key === povFactionId ? "#FFD700" : null,
+          radius:         PARTY_MEMBER_NODE_R,
+          isSubFaction:   false, isMember: false, isDocument: false,
+          isPartyMember:  true,  isPartyRetainer: false,
+          parentId:       partyId
+        });
+      });
+    }
+
+    // ── Pass 6: party-retainer nodes orbit their party (outer ring) ───────────
+    const partyRetainersByParty = {};
+    for (const r of this.#config.partyRetainers ?? []) {
+      if (r.factionId) (partyRetainersByParty[r.factionId] ??= []).push(r);
+    }
+    for (const [partyId, retainers] of Object.entries(partyRetainersByParty)) {
+      const parentPos = posMap[partyId];
+      if (!parentPos) continue;
+      const partyFaction = allFactions[partyId];
+      const partyR = partyFaction ? this.#computeNodeRadius(partyFaction) : R.factionGlobal;
+
+      // Outer ring: beyond the member ring outer edge
+      const memberNodes = partyMembersByParty[partyId] ?? [];
+      let innerOrbitR = partyR + PARTY_MEMBER_GAP + PARTY_MEMBER_NODE_R;
+      if (memberNodes.length) {
+        const sp = saved[NODE_KEY.forPartyMember(memberNodes[0].id)];
+        if (sp) innerOrbitR = Math.sqrt((sp.x - parentPos.x) ** 2 + (sp.y - parentPos.y) ** 2);
+      }
+      let orbitR = innerOrbitR + PARTY_MEMBER_NODE_R + PARTY_RETAINER_GAP + PARTY_MEMBER_NODE_R;
+      for (const ret of retainers) {
+        const sp = saved[NODE_KEY.forPartyRetainer(ret.id)];
+        if (sp) { orbitR = Math.sqrt((sp.x - parentPos.x) ** 2 + (sp.y - parentPos.y) ** 2); break; }
+      }
+
+      retainers.forEach((ret, i) => {
+        const key   = NODE_KEY.forPartyRetainer(ret.id);
+        const angle = (2 * Math.PI * i / Math.max(retainers.length, 1)) - Math.PI / 2;
+        const pos   = saved[key] ?? {
+          x: parentPos.x + orbitR * Math.cos(angle),
+          y: parentPos.y + orbitR * Math.sin(angle)
+        };
+        posMap[key] = pos;
+        nodes.push({
+          key,
+          label:           ret.name ?? "Retainer",
+          type:            ret.actorUuid ? "party-retainer-actor" : "party-retainer-other",
+          x: pos.x, y: pos.y,
+          edge: null, edgeStyle: null,
+          resolvedColor:   key === povFactionId ? "#FFD700" : null,
+          radius:          PARTY_MEMBER_NODE_R,
+          isSubFaction:    false, isMember: false, isDocument: false,
+          isPartyMember:   false, isPartyRetainer: true,
+          parentId:        partyId
         });
       });
     }
@@ -1293,7 +1489,8 @@ export class MindMapRenderer {
       if (!vel.has(node.key)) vel.set(node.key, { vx: 0, vy: 0 });
     }
 
-    const topNodes = nodes.filter(n => !n.isSubFaction && !n.isMember && !n.isDocument);
+    const topNodes = nodes.filter(n => !n.isSubFaction && !n.isMember && !n.isDocument
+                                      && !n.isPartyMember && !n.isPartyRetainer);
 
     // Group children by parent once per tick (used by sibling repulsion)
     const siblingsByParent = new Map();
@@ -1408,7 +1605,9 @@ export class MindMapRenderer {
    */
   #forceSiblingRepulsion(ctx) {
     for (const siblings of ctx.siblingsByParent.values()) {
-      const mult = siblings[0]?.isMember ? FORCE.siblingMemberMult : FORCE.siblingSubFacMult;
+      const s0 = siblings[0];
+      const mult = (s0?.isMember || s0?.isPartyMember || s0?.isPartyRetainer)
+        ? FORCE.siblingMemberMult : FORCE.siblingSubFacMult;
       for (let i = 0; i < siblings.length; i++) {
         for (let j = i + 1; j < siblings.length; j++) {
           this.#forceRepel(siblings[i], siblings[j], mult, ctx);
@@ -1424,8 +1623,10 @@ export class MindMapRenderer {
    * the spacing level — only cluster separation does.
    */
   #forceOrbitSprings(ctx) {
-    this.#applyOrbitSpring(ctx, this.#forceSubFacRadii, FORCE.orbitSpringK);
-    this.#applyOrbitSpring(ctx, this.#forceMemberRadii, FORCE.memberOrbitK);
+    this.#applyOrbitSpring(ctx, this.#forceSubFacRadii,          FORCE.orbitSpringK);
+    this.#applyOrbitSpring(ctx, this.#forceMemberRadii,          FORCE.memberOrbitK);
+    this.#applyOrbitSpring(ctx, this.#forcePartyMemberRadii,     FORCE.partyMemberOrbitK);
+    this.#applyOrbitSpring(ctx, this.#forcePartyRetainerRadii,   FORCE.partyRetainerOrbitK);
   }
 
   #applyOrbitSpring(ctx, radiiMap, springK) {
@@ -1452,6 +1653,8 @@ export class MindMapRenderer {
   #forceSnapToOrbits(ctx) {
     this.#applyOrbitSnap(ctx, this.#forceSubFacRadii);
     this.#applyOrbitSnap(ctx, this.#forceMemberRadii);
+    this.#applyOrbitSnap(ctx, this.#forcePartyMemberRadii);
+    this.#applyOrbitSnap(ctx, this.#forcePartyRetainerRadii);
   }
 
   #applyOrbitSnap(ctx, radiiMap) {
@@ -1608,30 +1811,54 @@ export class MindMapRenderer {
       }
     }
 
-    // ── Orbit rings (sub-faction + member) ───────────────────────────────────
+    // ── Orbit rings (sub-faction + member + party member/retainer) ───────────
     if (filterKey != null) {
-      // Filtered: only the single ring keyed on this parent
       const ring = this._orbitRingEls?.[filterKey];
       if (ring) updateRingCenter(ring, filterKey);
       const memberRing = this._memberOrbitRingEls?.[filterKey];
       if (memberRing) updateRingCenter(memberRing, filterKey);
+      const pmRing = this._partyMemberRingEls?.[filterKey];
+      if (pmRing) updateRingCenter(pmRing, filterKey);
+      const prRing = this._partyRetainerRingEls?.[filterKey];
+      if (prRing) updateRingCenter(prRing, filterKey);
     } else {
-      // Full pass: every ring
       if (this._orbitRingEls) {
-        for (const [parentKey, ring] of Object.entries(this._orbitRingEls)) {
-          updateRingCenter(ring, parentKey);
-        }
+        for (const [pk, ring] of Object.entries(this._orbitRingEls)) updateRingCenter(ring, pk);
       }
       if (this._memberOrbitRingEls) {
-        for (const [parentKey, ring] of Object.entries(this._memberOrbitRingEls)) {
-          updateRingCenter(ring, parentKey);
-        }
+        for (const [pk, ring] of Object.entries(this._memberOrbitRingEls)) updateRingCenter(ring, pk);
+      }
+      if (this._partyMemberRingEls) {
+        for (const [pk, ring] of Object.entries(this._partyMemberRingEls)) updateRingCenter(ring, pk);
+      }
+      if (this._partyRetainerRingEls) {
+        for (const [pk, ring] of Object.entries(this._partyRetainerRingEls)) updateRingCenter(ring, pk);
       }
     }
 
     // ── Member spoke lines (parent ↔ member) ─────────────────────────────────
     if (this._memberSpokeEls) {
       for (const { line, parentKey, memberKey } of Object.values(this._memberSpokeEls)) {
+        if (filterKey != null && parentKey !== filterKey && memberKey !== filterKey) continue;
+        const pn = nodeMap[parentKey], mn = nodeMap[memberKey];
+        if (!pn || !mn) continue;
+        updateEdgeLine(line, pn, mn, 0);
+      }
+    }
+
+    // ── Party-member spoke lines ──────────────────────────────────────────────
+    if (this._partyMemberSpokeEls) {
+      for (const { line, parentKey, memberKey } of Object.values(this._partyMemberSpokeEls)) {
+        if (filterKey != null && parentKey !== filterKey && memberKey !== filterKey) continue;
+        const pn = nodeMap[parentKey], mn = nodeMap[memberKey];
+        if (!pn || !mn) continue;
+        updateEdgeLine(line, pn, mn, 0);
+      }
+    }
+
+    // ── Party-retainer spoke lines ────────────────────────────────────────────
+    if (this._partyRetainerSpokeEls) {
+      for (const { line, parentKey, memberKey } of Object.values(this._partyRetainerSpokeEls)) {
         if (filterKey != null && parentKey !== filterKey && memberKey !== filterKey) continue;
         const pn = nodeMap[parentKey], mn = nodeMap[memberKey];
         if (!pn || !mn) continue;
@@ -1660,7 +1887,17 @@ export class MindMapRenderer {
     } else if (node.type === "faction") {
       shape = this.#el("circle", { r: R.faction, class: "mm-shape mm-faction-node" });
     } else if (node.type === "pov") {
-      shape = this.#el("circle", { r: node.radius ?? R.pov, class: "mm-shape mm-pov" });
+      if (node.isParty) {
+        // POV party: hexagon (pointy-top) with POV gold styling
+        const s = node.radius ?? R.pov;
+        const pts = Array.from({length: 6}, (_, i) => {
+          const a = (Math.PI / 3) * i - Math.PI / 2;
+          return `${(s * Math.cos(a)).toFixed(1)},${(s * Math.sin(a)).toFixed(1)}`;
+        }).join(" ");
+        shape = this.#el("polygon", { points: pts, class: "mm-shape mm-pov" });
+      } else {
+        shape = this.#el("circle", { r: node.radius ?? R.pov, class: "mm-shape mm-pov" });
+      }
     } else if (node.type === "faction-global") {
       shape = this.#el("circle", { r: node.radius ?? R.factionGlobal, class: "mm-shape mm-faction-global" });
     } else if (node.type === "document") {
@@ -1675,11 +1912,19 @@ export class MindMapRenderer {
         points: `0,${-s} ${s},0 0,${s} ${-s},0`,
         class: "mm-shape mm-doc-actor"
       });
-    } else if (node.type === "doc-scene") {
-      // Hexagon (pointy-top) for Scene documents
-      const s = node.radius ?? R.docGlobal;
+    } else if (node.type === "party-global") {
+      // Pointy-top hexagon for adventuring party nodes
+      const s = node.radius ?? R.factionGlobal;
       const pts = Array.from({length: 6}, (_, i) => {
         const a = (Math.PI / 3) * i - Math.PI / 2;
+        return `${(s * Math.cos(a)).toFixed(1)},${(s * Math.sin(a)).toFixed(1)}`;
+      }).join(" ");
+      shape = this.#el("polygon", { points: pts, class: "mm-shape mm-party-global" });
+    } else if (node.type === "doc-scene") {
+      // Octagon (flat-top, stop-sign orientation) for Scene documents
+      const s = node.radius ?? R.docGlobal;
+      const pts = Array.from({length: 8}, (_, i) => {
+        const a = (Math.PI / 4) * i + Math.PI / 8;
         return `${(s * Math.cos(a)).toFixed(1)},${(s * Math.sin(a)).toFixed(1)}`;
       }).join(" ");
       shape = this.#el("polygon", { points: pts, class: "mm-shape mm-doc-scene" });
@@ -1712,6 +1957,30 @@ export class MindMapRenderer {
         points: `0,${-s} ${s},0 0,${s} ${-s},0`,
         class: "mm-shape mm-member-other"
       });
+    } else if (node.type === "party-member-actor") {
+      const s = node.radius ?? PARTY_MEMBER_NODE_R;
+      shape = this.#el("polygon", {
+        points: `0,${-s} ${s},0 0,${s} ${-s},0`,
+        class: "mm-shape mm-party-member-actor"
+      });
+    } else if (node.type === "party-member-other") {
+      const s = node.radius ?? PARTY_MEMBER_NODE_R;
+      shape = this.#el("polygon", {
+        points: `0,${-s} ${s},0 0,${s} ${-s},0`,
+        class: "mm-shape mm-party-member-other"
+      });
+    } else if (node.type === "party-retainer-actor") {
+      const s = node.radius ?? PARTY_MEMBER_NODE_R;
+      shape = this.#el("polygon", {
+        points: `0,${-s} ${s},0 0,${s} ${-s},0`,
+        class: "mm-shape mm-party-retainer-actor"
+      });
+    } else if (node.type === "party-retainer-other") {
+      const s = node.radius ?? PARTY_MEMBER_NODE_R;
+      shape = this.#el("polygon", {
+        points: `0,${-s} ${s},0 0,${s} ${-s},0`,
+        class: "mm-shape mm-party-retainer-other"
+      });
     } else {
       shape = this.#el("ellipse", { rx: R.simple.rx, ry: R.simple.ry, class: "mm-shape mm-simple" });
     }
@@ -1719,8 +1988,9 @@ export class MindMapRenderer {
     if (color) {
       // Use inline style so it wins over CSS class fill/stroke rules
       shape.style.stroke = color;
-      // Fill: faction-global always; document and member nodes when color is set
-      if (node.type === "faction-global" || node.isDocument || node.isMember) {
+      if (node.type === "faction-global" || node.type === "party-global"
+          || node.isDocument || node.isMember
+          || node.isPartyMember || node.isPartyRetainer) {
         shape.style.fill = color;
       }
     }
@@ -1745,14 +2015,13 @@ export class MindMapRenderer {
 
     // Label — scale font/wrap with node radius for variable-size global nodes
     let fontSize   = null; // null → CSS controls font-size
-    let wrapAt     = node.isMember ? 7 : 12;
-    let lineHeight = node.isMember ? 11 : 13;
+    let wrapAt     = (node.isMember || node.isPartyMember || node.isPartyRetainer) ? 7 : 12;
+    let lineHeight = (node.isMember || node.isPartyMember || node.isPartyRetainer) ? 11 : 13;
 
-    if (node.type === "pov" || node.type === "faction-global") {
+    if (node.type === "pov" || node.type === "faction-global" || node.type === "party-global") {
       const r  = node.radius ?? R.factionGlobal;
       fontSize   = Math.max(9, r * 0.35);
       lineHeight = fontSize * 1.2;
-      // chars per line: available width ÷ avg char width
       wrapAt = Math.max(6, Math.floor((r * 1.5) / (fontSize * 0.55)));
     }
 
@@ -1983,7 +2252,7 @@ export class MindMapRenderer {
 
     if (isGlobal && !moved && this.#config.onSetPOV) {
       this.#config.onSetPOV(nodeKey);
-    } else if (isGlobal && moved && (node.isSubFaction || node.isMember)) {
+    } else if (isGlobal && moved && (node.isSubFaction || node.isMember || node.isPartyMember || node.isPartyRetainer)) {
       // Child dragged: normalize all siblings to the same orbit radius
       this.#normalizeOrbitAfterDrag(node);
     } else {
@@ -2013,11 +2282,19 @@ export class MindMapRenderer {
       (draggedNode.y - parentNode.y) ** 2
     );
 
-    const isMember = !!draggedNode.isMember;
+    const isMember        = !!draggedNode.isMember;
+    const isPartyMember   = !!draggedNode.isPartyMember;
+    const isPartyRetainer = !!draggedNode.isPartyRetainer;
+    const isSubFaction    = !!draggedNode.isSubFaction;
+
     const siblings = Object.values(this._globalNodeEls ?? {})
       .map(({ node: n }) => n)
-      .filter(n => n.parentId === draggedNode.parentId &&
-                   (isMember ? n.isMember : n.isSubFaction));
+      .filter(n => n.parentId === draggedNode.parentId && (
+        isMember        ? n.isMember        :
+        isPartyMember   ? n.isPartyMember   :
+        isPartyRetainer ? n.isPartyRetainer :
+        n.isSubFaction
+      ));
 
     for (const sib of siblings) {
       const oldX  = sib.x, oldY = sib.y;
@@ -2030,8 +2307,8 @@ export class MindMapRenderer {
       this.#redrawGlobalEdgesForNode(sib.key);
 
       // Sub-factions can have descendants — carry them along by the same delta.
-      // Members are leaf nodes, so there's nothing to recurse into.
-      if (!isMember) {
+      // Members and party-members/retainers are leaf nodes.
+      if (isSubFaction) {
         const sdx = sib.x - oldX, sdy = sib.y - oldY;
         if (sdx || sdy) {
           this.#moveDescendantsLive(sib.key, sdx, sdy);
@@ -2043,6 +2320,10 @@ export class MindMapRenderer {
     // Update the appropriate orbit ring radius
     if (isMember) {
       this._memberOrbitRingEls?.[draggedNode.parentId]?.setAttribute("r", newRadius);
+    } else if (isPartyMember) {
+      this._partyMemberRingEls?.[draggedNode.parentId]?.setAttribute("r", newRadius);
+    } else if (isPartyRetainer) {
+      this._partyRetainerRingEls?.[draggedNode.parentId]?.setAttribute("r", newRadius);
     } else {
       if (this._orbitRadii) this._orbitRadii[draggedNode.parentId] = newRadius;
       const ring = this._orbitRingEls?.[draggedNode.parentId];
@@ -2269,24 +2550,49 @@ export class MindMapRenderer {
 
     // ── Circles ────────────────────────────────────────────────────────────
     if (t === NODE_TYPE.CENTRAL || t === NODE_TYPE.SUBFACTION ||
-        t === NODE_TYPE.FACTION || t === NODE_TYPE.POV        ||
-        t === NODE_TYPE.FACTION_GLOBAL) {
+        t === NODE_TYPE.FACTION || t === NODE_TYPE.FACTION_GLOBAL) {
+      return { x: node.x + ux * s, y: node.y + uy * s, inside: dist <= s };
+    }
+    if (t === NODE_TYPE.POV) {
+      if (node.isParty) {
+        // Party POV: hexagon edge geometry
+        const poly = Array.from({length: 6}, (_, i) => {
+          const a = (Math.PI / 3) * i - Math.PI / 2;
+          return { x: s * Math.cos(a), y: s * Math.sin(a) };
+        });
+        const pt = this.#rayPolyEdge(ux, uy, poly) ?? {x: ux*s, y: uy*s};
+        return { x: node.x + pt.x, y: node.y + pt.y,
+                 inside: this.#pointInPoly(dx, dy, poly) };
+      }
       return { x: node.x + ux * s, y: node.y + uy * s, inside: dist <= s };
     }
 
+    // ── Hexagon pointy-top (party-global) ──────────────────────────────────
+    if (t === NODE_TYPE.PARTY_GLOBAL) {
+      const poly = Array.from({length: 6}, (_, i) => {
+        const a = (Math.PI / 3) * i - Math.PI / 2;
+        return { x: s * Math.cos(a), y: s * Math.sin(a) };
+      });
+      const pt = this.#rayPolyEdge(ux, uy, poly) ?? {x: ux*s, y: uy*s};
+      return { x: node.x + pt.x, y: node.y + pt.y,
+               inside: this.#pointInPoly(dx, dy, poly) };
+    }
+
     // ── Diamond (axis-aligned rhombus) ─────────────────────────────────────
-    if (t === NODE_TYPE.DOC_ACTOR  || t === NODE_TYPE.MEMBER_ACTOR ||
-        t === NODE_TYPE.MEMBER_OTHER) {
+    if (t === NODE_TYPE.DOC_ACTOR       || t === NODE_TYPE.MEMBER_ACTOR      ||
+        t === NODE_TYPE.MEMBER_OTHER    || t === NODE_TYPE.PARTY_MEMBER_ACTOR ||
+        t === NODE_TYPE.PARTY_MEMBER_OTHER || t === NODE_TYPE.PARTY_RETAINER_ACTOR ||
+        t === NODE_TYPE.PARTY_RETAINER_OTHER) {
       const poly = [{x:0,y:-s},{x:s,y:0},{x:0,y:s},{x:-s,y:0}];
       const pt   = this.#rayPolyEdge(ux, uy, poly) ?? {x: ux*s, y: uy*s};
       return { x: node.x + pt.x, y: node.y + pt.y,
                inside: Math.abs(dx) + Math.abs(dy) <= s };
     }
 
-    // ── Hexagon pointy-top (doc-scene) ─────────────────────────────────────
+    // ── Octagon flat-top (doc-scene) ───────────────────────────────────────
     if (t === NODE_TYPE.DOC_SCENE) {
-      const poly = Array.from({length: 6}, (_, i) => {
-        const a = (Math.PI / 3) * i - Math.PI / 2;
+      const poly = Array.from({length: 8}, (_, i) => {
+        const a = (Math.PI / 4) * i + Math.PI / 8;
         return { x: s * Math.cos(a), y: s * Math.sin(a) };
       });
       const pt = this.#rayPolyEdge(ux, uy, poly) ?? {x: ux*s, y: uy*s};

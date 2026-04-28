@@ -31,6 +31,12 @@ export async function tryAddSessionNote(text, factionName, settingKey = null) {
   } catch { /* no active session, or module unavailable */ }
 }
 
+/** Returns true if the Sandbox Campaign Manager module is present and active. */
+export function isSandboxPresent() {
+  try { return !!game.modules.get("sandbox-campaign-manager")?.active; }
+  catch { return false; }
+}
+
 /** Returns the active Sandbox party ID, or null if SCM is missing/no active party. */
 export function getActiveSandboxPartyId() {
   try {

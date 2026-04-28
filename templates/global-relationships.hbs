@@ -7,6 +7,35 @@
       <div class="global-rel-filter-row">
         <input type="text" class="global-rel-filter-input" placeholder="Filter factions &amp; documents…">
       </div>
+
+      {{!-- Without SCM: all parties at the top --}}
+      {{#unless scmPresent}}
+        {{#if otherParties.length}}
+          <div class="global-rel-list-header"><span>Parties</span></div>
+          {{#each otherParties}}
+            <div class="global-rel-party-item{{#if isPOV}} selected{{/if}}"
+                 data-faction-id="{{id}}" data-filter-name="{{name}}" title="{{name}}">
+              <i class="fa-solid fa-people-group fa-fw"></i>
+              <span class="global-rel-faction-name">{{name}}</span>
+            </div>
+          {{/each}}
+        {{/if}}
+      {{/unless}}
+
+      {{!-- With SCM: active party at the very top --}}
+      {{#if scmPresent}}
+        {{#if activeParty}}
+          <div class="global-rel-list-header"><span>Active Party</span></div>
+          <div class="global-rel-party-item{{#if activeParty.isPOV}} selected{{/if}}"
+               data-faction-id="{{activeParty.id}}" data-filter-name="{{activeParty.name}}"
+               title="{{activeParty.name}}">
+            <i class="fa-solid fa-people-group fa-fw"></i>
+            <span class="global-rel-faction-name">{{activeParty.name}}</span>
+          </div>
+        {{/if}}
+      {{/if}}
+
+      {{!-- Factions --}}
       <div class="global-rel-list-header">
         <span>Factions</span>
         {{#if povFactionId}}
@@ -31,6 +60,21 @@
       {{else}}
         <div class="global-rel-empty">No factions yet.</div>
       {{/each}}
+
+      {{!-- With SCM: other parties below factions --}}
+      {{#if scmPresent}}
+        {{#if otherParties.length}}
+          <div class="global-rel-list-header"><span>Other Parties</span></div>
+          {{#each otherParties}}
+            <div class="global-rel-party-item{{#if isPOV}} selected{{/if}}"
+                 data-faction-id="{{id}}" data-filter-name="{{name}}" title="{{name}}">
+              <i class="fa-solid fa-people-group fa-fw"></i>
+              <span class="global-rel-faction-name">{{name}}</span>
+            </div>
+          {{/each}}
+        {{/if}}
+      {{/if}}
+
       {{!-- Documents section --}}
       <div class="global-rel-section-header">
         <span>Documents</span>

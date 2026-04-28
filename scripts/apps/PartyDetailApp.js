@@ -290,6 +290,14 @@ export class PartyDetailApp extends HandlebarsApplicationMixin(ApplicationV2) {
   _onRender(context, options) {
     super._onRender(context, options);
 
+    // ── Party node color: auto-save on change ────────────────────────────────
+    const colorPicker = this.element.querySelector('input[name="partyColor"]');
+    if (colorPicker && this.#selectedFactionId) {
+      colorPicker.addEventListener("change", async (e) => {
+        await FactionStore.update(this.#selectedFactionId, { color: e.target.value });
+      });
+    }
+
     // ── GM Quick Note: auto-save on blur or Enter (does not re-render) ───────
     const quickNote = this.element.querySelector(".party-quick-note-textarea");
     if (quickNote && this.#selectedFactionId) {

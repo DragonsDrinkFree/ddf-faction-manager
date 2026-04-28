@@ -154,7 +154,8 @@ Hooks.once("init", async () => {
     `modules/${MODULE_ID}/templates/faction-detail.hbs`,
     `modules/${MODULE_ID}/templates/party-detail.hbs`,
     `modules/${MODULE_ID}/templates/global-relationships.hbs`,
-    `modules/${MODULE_ID}/templates/partials/faction-item.hbs`
+    `modules/${MODULE_ID}/templates/partials/faction-item.hbs`,
+    `modules/${MODULE_ID}/templates/partials/folder-section.hbs`
   ]);
 
   // Register the recursive faction-item partial

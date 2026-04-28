@@ -3,6 +3,7 @@ import { RelationshipStore } from "../data/RelationshipStore.js";
 import { MemberStore } from "../data/MemberStore.js";
 import { MindMapRenderer, DOC_SIZE_PRESETS, NODE_KEY, parseNodeKey } from "./MindMapRenderer.js";
 import { FactionDetailApp } from "./FactionDetailApp.js";
+import { PartyDetailApp } from "./PartyDetailApp.js";
 import {
   getConnectionTypes,
   connectionTypePickerHTML,
@@ -11,7 +12,7 @@ import {
   readSelectedType,
   bindPanelDismiss
 } from "../utils/ConnectionPanelHelpers.js";
-import { syncAllSandboxPartyMembers } from "../utils/SandboxIntegration.js";
+import { syncAllSandboxPartyMembers, isSandboxPresent, getActiveSandboxPartyId } from "../utils/SandboxIntegration.js";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -190,9 +191,34 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
       const allFactions  = FactionStore.getAll();
       const customOrder  = this.#factionOrder;
 
-      // Top-level factions sorted by custom order, then alphabetical fallback
+      // Separate parties from regular factions
+      const allParties       = Object.values(allFactions).filter(f => f.kind === "party");
+      const decorateParty    = p => ({ ...p, isPOV: p.id === this.#povFactionId });
+
+      // SCM-aware party split
+      const scmPresent       = isSandboxPresent();
+      const activeSbPartyId  = getActiveSandboxPartyId();
+      const activePartyRecord = (scmPresent && activeSbPartyId)
+        ? allParties.find(p => p.sandboxPartyId === activeSbPartyId) ?? null
+        : null;
+
+      if (scmPresent) {
+        context.activeParty  = activePartyRecord ? decorateParty(activePartyRecord) : null;
+        context.otherParties = allParties
+          .filter(p => p.id !== activePartyRecord?.id)
+          .sort((a, b) => a.name.localeCompare(b.name))
+          .map(decorateParty);
+      } else {
+        context.activeParty  = null;
+        context.otherParties = allParties
+          .sort((a, b) => a.name.localeCompare(b.name))
+          .map(decorateParty);
+      }
+      context.scmPresent = scmPresent;
+
+      // Top-level non-party factions sorted by custom order, then alphabetical fallback
       const topLevel = Object.values(allFactions)
-        .filter(f => !f.parentId || !allFactions[f.parentId])
+        .filter(f => f.kind !== "party" && (!f.parentId || !allFactions[f.parentId]))
         .sort((a, b) => {
           if (customOrder) {
             const ia = customOrder.indexOf(a.id);
@@ -208,7 +234,7 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
       const orderedList = [];
       for (const parent of topLevel) {
         const subs = Object.values(allFactions)
-          .filter(f => f.parentId === parent.id)
+          .filter(f => f.parentId === parent.id && f.kind !== "party")
           .sort((a, b) => a.name.localeCompare(b.name));
 
         orderedList.push({
@@ -296,7 +322,7 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
     });
 
     // ── POV toggle (click on item row, not the collapse button) ──────────────
-    this.element.querySelectorAll(".global-rel-faction-item").forEach(item => {
+    this.element.querySelectorAll(".global-rel-faction-item, .global-rel-party-item").forEach(item => {
       item.addEventListener("click", () => {
         const factionId = item.dataset.factionId;
         if (factionId) this.#togglePOV(factionId);
@@ -364,7 +390,7 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
     const filterInput = this.element.querySelector(".global-rel-filter-input");
     filterInput?.addEventListener("input", () => {
       const q = filterInput.value.toLowerCase().trim();
-      this.element.querySelectorAll(".global-rel-faction-item").forEach(el => {
+      this.element.querySelectorAll(".global-rel-faction-item, .global-rel-party-item").forEach(el => {
         const match = !q || el.dataset.filterName?.toLowerCase().includes(q);
         el.style.display = match ? "" : "none";
       });
@@ -458,7 +484,7 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
     this.#povFactionId = (this.#povFactionId === factionId) ? null : factionId;
 
     // Update left-pane CSS without a full re-render
-    this.element.querySelectorAll(".global-rel-faction-item").forEach(el => {
+    this.element.querySelectorAll(".global-rel-faction-item, .global-rel-party-item").forEach(el => {
       el.classList.toggle("selected", el.dataset.factionId === this.#povFactionId);
     });
 
@@ -510,6 +536,22 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
       get allFactions()           { return FactionStore.getAll(); },
       get edges()                 { return RelationshipStore.getAll().edges; },
       get members()               { return MemberStore.getAll().members; },
+      get partyMembers() {
+        const result = [];
+        for (const f of Object.values(FactionStore.getAll())) {
+          if (f.kind !== "party") continue;
+          for (const m of (f.members ?? [])) result.push({ ...m, factionId: f.id });
+        }
+        return result;
+      },
+      get partyRetainers() {
+        const result = [];
+        for (const f of Object.values(FactionStore.getAll())) {
+          if (f.kind !== "party") continue;
+          for (const r of (f.retainers ?? [])) result.push({ ...r, factionId: f.id });
+        }
+        return result;
+      },
       get pinnedDocuments()       { return RelationshipStore.getPinnedDocuments(); },
       get documentSizes()         { return RelationshipStore.getDocumentSizes(); },
       get positions()             { return RelationshipStore.getPositions("__global__"); },
@@ -977,7 +1019,12 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
           doc?.sheet?.render(true);
         }
       } else {
-        FactionDetailApp.show(nodeKey);
+        const faction = FactionStore.getAll()[nodeKey];
+        if (faction?.kind === "party") {
+          PartyDetailApp.show(nodeKey);
+        } else {
+          FactionDetailApp.show(nodeKey);
+        }
       }
     });
 
