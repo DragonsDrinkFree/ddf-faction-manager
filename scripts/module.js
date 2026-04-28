@@ -6,6 +6,7 @@ import { MemberStore } from "./data/MemberStore.js";
 import { EventLogStore } from "./data/EventLogStore.js";
 import { FactionsSidebarTab } from "./apps/FactionsSidebarTab.js";
 import { FactionDetailApp } from "./apps/FactionDetailApp.js";
+import { getActiveSandboxPartyId } from "./utils/SandboxIntegration.js";
 
 const MODULE_ID = "ddf-faction-manager";
 
@@ -180,28 +181,64 @@ Hooks.once("ready", () => {
   }, true);
 
   // Re-render the faction sidebar tab whenever the user clicks/activates it.
-  // This forces a fresh sandbox-import check (in case SCM loaded after us) and
+  // Forces a fresh sandbox-import check (in case SCM loaded after us) and
   // refreshes active-party gold styling + sort order when the GM has switched
-  // active parties in SCM since the last render.
+  // active parties in SCM since the last render. Multiple trigger paths
+  // because V14 sidebar tab activation doesn't have one stable hook signature.
   const refreshFactionTab = () => {
-    const tab = ui.sidebar?.tabs?.ddfFactions;
-    if (tab?.rendered) tab.render({ force: true });
+    const tab = ui.sidebar?.tabs?.ddfFactions
+             ?? ui.sidebar?.tabs?.get?.("ddfFactions")
+             ?? ui?.ddfFactions
+             ?? null;
+    if (tab?.render) tab.render({ force: true });
   };
 
-  // Foundry's documented hook for tab activation
+  // Trigger 1: documented changeSidebarTab hook (works in V12-V13, may differ in V14)
   Hooks.on("changeSidebarTab", (arg) => {
     const tabName = typeof arg === "string" ? arg : (arg?.tabName ?? arg?.id ?? null);
     if (tabName === "ddfFactions") refreshFactionTab();
   });
 
-  // Belt-and-suspenders: catch the click directly on the sidebar nav button.
-  // Defer to a microtask so Foundry has finished switching the active tab
-  // before we trigger the re-render.
+  // Trigger 2: renderSidebar hook — fires when the sidebar redraws; check active tab
+  Hooks.on("renderSidebar", (sidebar) => {
+    const active = sidebar?.activeTab ?? sidebar?.tabName
+                ?? sidebar?.element?.querySelector?.('[data-tab].active')?.dataset?.tab;
+    if (active === "ddfFactions") refreshFactionTab();
+  });
+
+  // Trigger 3: direct DOM click on any nav element marked for our tab. Covers
+  // multiple V13/V14 button shapes — buttons, anchor tags, etc.
   document.addEventListener("click", (event) => {
-    const btn = event.target.closest('[data-tab="ddfFactions"], [data-action="tab"][data-tab="ddfFactions"]');
+    const btn = event.target.closest(
+      '[data-tab="ddfFactions"], [data-action="tab"][data-tab="ddfFactions"], [data-tab-id="ddfFactions"]'
+    );
     if (!btn) return;
     Promise.resolve().then(refreshFactionTab);
   }, true);
+
+  // Trigger 4 (bulletproof safety net): poll every 1.5s to catch both tab
+  // activation and active-party changes that other triggers may have missed.
+  // The cost is minimal — render() is a no-op when nothing has changed in the
+  // store, and the dispatch only fires on observed transitions.
+  let lastActiveTabName = null;
+  let lastActivePartyId = null;
+  const detectActiveTabName = () => {
+    return ui.sidebar?.activeTab?.tabName
+        ?? (typeof ui.sidebar?.activeTab === "string" ? ui.sidebar.activeTab : null)
+        ?? ui.sidebar?.tabName
+        ?? document.querySelector?.('.sidebar-tab.active, [data-tab].active')?.dataset?.tab
+        ?? null;
+  };
+  setInterval(() => {
+    const tabName       = detectActiveTabName();
+    const activePartyId = getActiveSandboxPartyId();
+    const onOurTab      = tabName === "ddfFactions";
+    const tabChanged    = tabName !== lastActiveTabName;
+    const partyChanged  = activePartyId !== lastActivePartyId;
+    if (onOurTab && (tabChanged || partyChanged)) refreshFactionTab();
+    lastActiveTabName = tabName;
+    lastActivePartyId = activePartyId;
+  }, 1500);
 });
 
 // ── Enhance the Game Settings panel for Faction Manager settings ──────────────

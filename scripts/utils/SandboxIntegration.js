@@ -58,6 +58,30 @@ function readMemberActorUuid(m) {
 }
 
 /**
+ * Resolve a UUID-or-id reference to an actor's display name. Tries multiple
+ * paths because async fromUuid can fail to resolve world-level actors in some
+ * V14 timing windows; the synchronous game.actors.get() lookup is more
+ * reliable for plain "Actor.<id>" or bare-id references.
+ */
+async function resolveActorName(ref) {
+  if (!ref) return null;
+  // Synchronous lookup for world-level actor references — fastest + most reliable
+  const idPart = typeof ref === "string"
+    ? (ref.startsWith("Actor.") ? ref.slice("Actor.".length) : ref)
+    : null;
+  if (idPart) {
+    const actor = game.actors?.get?.(idPart);
+    if (actor?.name) return actor.name;
+  }
+  // Fallback: async fromUuid (handles compendium and scene-scoped UUIDs)
+  try {
+    const doc = await fromUuid(ref);
+    if (doc?.name) return doc.name;
+  } catch { /* stale or unresolvable */ }
+  return null;
+}
+
+/**
  * Returns SCM parties that don't yet have a matching record in our FactionStore
  * (matched by `sandboxPartyId`). Empty array if SCM is absent.
  */
@@ -107,14 +131,19 @@ export async function syncSandboxPartyMembers(factionId) {
   for (const m of sandboxMembers) {
     const uuid = readMemberActorUuid(m);
     if (!uuid || ownedUuids.has(uuid)) continue;
-    let name = m?.name;
+    // Prefer a name supplied directly on the member object; otherwise resolve
+    // the actor — sync world lookup first, async fromUuid as fallback.
+    let name = (typeof m === "object" && m?.name) ? m.name : null;
+    if (!name) name = await resolveActorName(uuid);
     if (!name) {
-      try { name = (await fromUuid(uuid))?.name; } catch { /* stale */ }
+      console.warn(`ddf-faction-manager | Could not resolve actor for UUID "${uuid}" — imported as "Unknown"`);
     }
+    // Normalise stored UUID to canonical "Actor.<id>" form so unlink/relink works
+    const storedUuid = uuid.includes(".") ? uuid : `Actor.${uuid}`;
     next.push({
       id:        foundry.utils.randomID(),
       name:      name || "Unknown",
-      actorUuid: uuid,
+      actorUuid: storedUuid,
       notes:     [],
       source:    "sandbox"
     });

@@ -133,6 +133,24 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
     return context;
   }
 
+  // ─── Activation Lifecycle ────────────────────────────────────────────────────
+  // V14's AbstractSidebarTab may call any of these when the user activates the
+  // tab. Override all candidates and force a re-render so the sandbox-import
+  // check + active-party styling refresh on every click.
+
+  /** @override */
+  _onActivate(...args) {
+    super._onActivate?.(...args);
+    if (this.rendered) this.render({ force: true });
+  }
+
+  /** Possible alternate V14 lifecycle name — harmless if not invoked. */
+  activate(...args) {
+    const result = super.activate?.(...args);
+    if (this.rendered) this.render({ force: true });
+    return result;
+  }
+
   // ─── Render Hook ─────────────────────────────────────────────────────────────
 
   /** @override */
