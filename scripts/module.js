@@ -4,6 +4,7 @@ import { RelationshipStore } from "./data/RelationshipStore.js";
 import { FolderStore } from "./data/FolderStore.js";
 import { MemberStore } from "./data/MemberStore.js";
 import { EventLogStore } from "./data/EventLogStore.js";
+import { ReputationStore } from "./data/ReputationStore.js";
 import { FactionsSidebarTab } from "./apps/FactionsSidebarTab.js";
 import { FactionDetailApp } from "./apps/FactionDetailApp.js";
 import { getActiveSandboxPartyId } from "./utils/SandboxIntegration.js";
@@ -18,6 +19,7 @@ Hooks.once("init", async () => {
   FolderStore.register();
   MemberStore.register();
   EventLogStore.register();
+  ReputationStore.register();
 
   // ── Faction text enricher  (@Faction[id]{label}) ──────────────────────────────
   CONFIG.TextEditor.enrichers.push({
@@ -108,6 +110,21 @@ Hooks.once("init", async () => {
     ])
   });
 
+  game.settings.register(MODULE_ID, "currencyTypes", {
+    name: "Currency Types",
+    hint: "Currency denominations available for retainer weekly wages. The abbreviation (e.g. gp) appears in the dropdown.",
+    scope: "world",
+    config: true,
+    type: String,
+    default: JSON.stringify([
+      { id: "cp", name: "Copper Pieces" },
+      { id: "sp", name: "Silver Pieces" },
+      { id: "ep", name: "Electrum Pieces" },
+      { id: "gp", name: "Gold Pieces" },
+      { id: "pp", name: "Platinum Pieces" }
+    ])
+  });
+
   // ── Sandbox Campaign Manager Integration toggles ──────────────────────────────
   const scmSettings = [
     { key: "scmMemberAdded",              name: "Member: Added" },
@@ -154,6 +171,7 @@ Hooks.once("init", async () => {
     `modules/${MODULE_ID}/templates/faction-detail.hbs`,
     `modules/${MODULE_ID}/templates/party-detail.hbs`,
     `modules/${MODULE_ID}/templates/global-relationships.hbs`,
+    `modules/${MODULE_ID}/templates/party-reputation-log.hbs`,
     `modules/${MODULE_ID}/templates/partials/faction-item.hbs`,
     `modules/${MODULE_ID}/templates/partials/folder-section.hbs`
   ]);
@@ -166,6 +184,8 @@ Hooks.once("init", async () => {
 
   // Register helpers used in templates
   Handlebars.registerHelper("eq", (a, b) => a === b);
+  Handlebars.registerHelper("gt", (a, b) => a > b);
+  Handlebars.registerHelper("lt", (a, b) => a < b);
 
   console.log(`${MODULE_ID} | Initialized`);
 });
@@ -490,6 +510,94 @@ Hooks.on("renderSettingsConfig", (_app, html) => {
   ctWrap.appendChild(addCtBtn);
 
   ctInput.replaceWith(ctWrap);
+
+  // ── Currency Types: swap text input for a list editor ────────────────────
+  const currInput = root.querySelector(
+    `input[name="${MODULE_ID}.currencyTypes"]:not([type="hidden"])`
+  );
+  if (currInput) {
+    let currentCurrencies = [];
+    try {
+      const raw = game.settings.get(MODULE_ID, "currencyTypes");
+      currentCurrencies = typeof raw === "string" ? JSON.parse(raw) : (raw ?? []);
+    } catch { /* keep empty */ }
+
+    const currWrap = document.createElement("div");
+    currWrap.className = "ddf-inline-currency-editor";
+
+    const currHidden  = document.createElement("input");
+    currHidden.type   = "hidden";
+    currHidden.name   = `${MODULE_ID}.currencyTypes`;
+    currHidden.value  = JSON.stringify(currentCurrencies);
+    currWrap.appendChild(currHidden);
+
+    const currHeader = document.createElement("div");
+    currHeader.className = "ddf-currency-list-header";
+    currHeader.innerHTML = `<span>Abbrev.</span><span>Full Name</span><span></span>`;
+    currWrap.appendChild(currHeader);
+
+    const currList = document.createElement("div");
+    currList.className = "ddf-currency-list";
+    currWrap.appendChild(currList);
+
+    const syncCurrHidden = () => {
+      const defs = [];
+      currList.querySelectorAll(".ddf-currency-row").forEach(row => {
+        const id   = row.querySelector(".ddf-currency-id")?.value.trim();
+        const name = row.querySelector(".ddf-currency-name")?.value.trim();
+        if (id) defs.push({ id, name: name || id });
+      });
+      currHidden.value = JSON.stringify(defs);
+    };
+
+    const addCurrencyRow = (id, name) => {
+      const row       = document.createElement("div");
+      row.className   = "ddf-currency-row";
+
+      const idInput         = document.createElement("input");
+      idInput.type          = "text";
+      idInput.className     = "ddf-currency-id";
+      idInput.value         = id;
+      idInput.placeholder   = "gp";
+      idInput.maxLength     = 6;
+      idInput.addEventListener("input", syncCurrHidden);
+
+      const nameInput       = document.createElement("input");
+      nameInput.type        = "text";
+      nameInput.className   = "ddf-currency-name";
+      nameInput.value       = name;
+      nameInput.placeholder = "Gold Pieces";
+      nameInput.addEventListener("input", syncCurrHidden);
+
+      const delBtn     = document.createElement("button");
+      delBtn.type      = "button";
+      delBtn.className = "ddf-currency-delete icon";
+      delBtn.title     = "Remove currency";
+      delBtn.innerHTML = '<i class="fa-solid fa-trash"></i>';
+      delBtn.addEventListener("click", () => { row.remove(); syncCurrHidden(); });
+
+      row.appendChild(idInput);
+      row.appendChild(nameInput);
+      row.appendChild(delBtn);
+      currList.appendChild(row);
+      return row;
+    };
+
+    for (const def of currentCurrencies) addCurrencyRow(def.id, def.name);
+
+    const addCurrBtn     = document.createElement("button");
+    addCurrBtn.type      = "button";
+    addCurrBtn.className = "ddf-add-currency-btn";
+    addCurrBtn.innerHTML = '<i class="fa-solid fa-plus"></i> Add Currency';
+    addCurrBtn.addEventListener("click", () => {
+      const row = addCurrencyRow("", "");
+      syncCurrHidden();
+      row.querySelector(".ddf-currency-id")?.focus();
+    });
+    currWrap.appendChild(addCurrBtn);
+
+    currInput.replaceWith(currWrap);
+  }
 
   // ── SCM Integration: inject section header before first SCM setting ───────
   const scmFirstInput = root.querySelector(`input[name="${MODULE_ID}.scmMemberAdded"]`);

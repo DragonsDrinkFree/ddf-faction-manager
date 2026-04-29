@@ -29,28 +29,17 @@
           </div>
         </div>
 
-        {{!-- Tags bar --}}
-        <div class="faction-tags-bar">
-          {{#each factionTags}}
-            <span class="ddf-tag">
-              <span class="ddf-tag-label">{{this}}</span>
-              <button type="button" class="ddf-tag-remove icon" data-action="deleteTag" data-tag="{{this}}" title="Remove tag">
-                <i class="fa-solid fa-xmark"></i>
-              </button>
-            </span>
-          {{/each}}
-          <button type="button" class="ddf-tag-add icon" data-action="addTag" title="Add tag">
-            <i class="fa-solid fa-tag"></i><i class="fa-solid fa-plus fa-2xs"></i>
-          </button>
-        </div>
-
-        {{!-- GM Quick Note --}}
+        {{!-- GM Quick Note (collapsible) --}}
         <div class="party-quick-note-section">
-          <label class="party-quick-note-label">
-            <i class="fa-solid fa-note-sticky"></i> GM Note
-          </label>
-          <textarea class="party-quick-note-textarea"
-                    placeholder="Scribble a quick note about the party…">{{partyNote}}</textarea>
+          <button type="button" class="party-quick-note-toggle" data-action="toggleNote">
+            <i class="fa-solid fa-note-sticky"></i>
+            <span>GM Note</span>
+            <i class="fa-solid fa-chevron-{{#if noteExpanded}}up{{else}}down{{/if}}"></i>
+          </button>
+          {{#if noteExpanded}}
+            <textarea class="party-quick-note-textarea"
+                      placeholder="Scribble a quick note about the party…">{{partyNote}}</textarea>
+          {{/if}}
         </div>
 
         {{!-- Two-pane: member list left, selected-person detail right --}}
@@ -86,11 +75,23 @@
                   <i class="fa-solid fa-user-plus"></i>
                 </button>
               </div>
+              {{#if retainers.length}}
+                <div class="retainer-col-totals">
+                  <span class="retainer-totals-label">Totals</span>
+                  <span class="retainer-totals-values">
+                    {{#if totalTreasureShares}}{{totalTreasureShares}} shares{{/if}}{{#if retainerWageTotals.length}}{{#if totalTreasureShares}} · {{/if}}{{#each retainerWageTotals}}{{amount}}{{currency}}{{#unless @last}} {{/unless}}{{/each}}/wk{{/if}}
+                  </span>
+                </div>
+              {{/if}}
               {{#each retainers}}
-                <div class="member-item{{#if isSelected}} selected{{/if}}"
+                <div class="member-item retainer-row{{#if isSelected}} selected{{/if}}"
                      data-action="selectPerson" data-person-id="{{id}}" data-kind="retainer">
-                  <i class="fa-solid fa-user-tie fa-fw member-item-icon"></i>
-                  <span class="member-item-name">{{displayName}}</span>
+                  <span class="retainer-col-name">
+                    <i class="fa-solid fa-user-tie fa-fw member-item-icon"></i>
+                    <span class="member-item-name">{{displayName}}</span>
+                  </span>
+                  <span class="retainer-wage-badge"
+                        data-wage-info="Share: {{wages.treasureShare}} · Wages: {{#if wages.weeklyWages}}{{wages.weeklyWages}}{{wages.weeklyWagesCurrency}}/wk{{else}}none{{/if}}">$</span>
                 </div>
               {{else}}
                 <div class="member-item-empty">No retainers yet.</div>
@@ -151,12 +152,19 @@
                     <label class="retainer-wages-label">
                       <span>Treasure Share</span>
                       <input type="number" class="retainer-wages-input" data-wage-field="treasureShare"
-                             value="{{selectedPerson.wages.treasureShare}}" min="0" step="1" />
+                             value="{{selectedPerson.wages.treasureShare}}" min="0" step="0.25" />
                     </label>
                     <label class="retainer-wages-label">
                       <span>Weekly Wages</span>
-                      <input type="number" class="retainer-wages-input" data-wage-field="weeklyWages"
-                             value="{{selectedPerson.wages.weeklyWages}}" min="0" step="1" />
+                      <div class="retainer-wages-weekly">
+                        <input type="number" class="retainer-wages-input" data-wage-field="weeklyWages"
+                               value="{{selectedPerson.wages.weeklyWages}}" min="0" step="1" />
+                        <select class="retainer-currency-select">
+                          {{#each currencyTypes}}
+                            <option value="{{id}}" {{#if (eq id ../selectedPerson.wages.weeklyWagesCurrency)}}selected{{/if}}>{{id}}</option>
+                          {{/each}}
+                        </select>
+                      </div>
                     </label>
                   </div>
                 </div>
@@ -167,6 +175,7 @@
                     {{#each selectedPerson.loyaltyBoxes}}
                       <button type="button"
                               class="retainer-loyalty-box{{#if filled}} filled{{/if}}"
+                              {{#if filled}}style="background:hsl({{hue}},65%,42%);border-color:hsl({{hue}},65%,42%);"{{/if}}
                               data-action="setLoyalty"
                               data-loyalty="{{value}}"
                               title="Loyalty {{value}}/12">
@@ -474,6 +483,117 @@
         <div class="faction-no-selection">
           <i class="fa-solid fa-people-group"></i>
           <p>Select a party to view connections.</p>
+        </div>
+      {{/if}}
+    </section>
+
+    {{!-- Reputation Tab --}}
+    <section class="tab reputation {{#if (eq activeTab "reputation")}}active{{/if}}" data-tab="reputation">
+      {{#if selectedFaction}}
+        <div class="ddf-rep-layout">
+
+          {{!-- Left: faction list --}}
+          <div class="ddf-rep-list-pane">
+            <div class="ddf-rep-list-header">
+              <span>Factions</span>
+              <button type="button" class="ddf-rep-add-faction icon" title="Add faction">
+                <i class="fa-solid fa-plus"></i>
+              </button>
+            </div>
+            {{#each reputations}}
+              <div class="ddf-rep-faction-row{{#if isSelected}} selected{{/if}}"
+                   data-faction-id="{{factionId}}" title="{{factionName}}">
+                <span class="ddf-rep-faction-name">{{factionName}}</span>
+                <div class="ddf-rep-row-track">
+                  <div class="ddf-rep-mini-track">
+                    {{#each trackBoxes}}
+                      <button type="button"
+                              class="ddf-rep-track-box{{#if filled}} filled{{/if}}"
+                              {{#if filled}}style="background:hsl({{hue}},65%,42%);border-color:hsl({{hue}},65%,42%);"{{/if}}
+                              data-faction-id="{{../factionId}}"
+                              data-value="{{value}}"></button>
+                    {{/each}}
+                  </div>
+                  <span class="ddf-rep-mini-value">{{current}}/{{maxValue}}</span>
+                </div>
+              </div>
+            {{else}}
+              <div class="ddf-rep-empty">No factions tracked. Click <i class="fa-solid fa-plus"></i> to add one.</div>
+            {{/each}}
+          </div>
+
+          {{!-- Right: detail pane --}}
+          <div class="ddf-rep-detail-pane">
+            {{#if selectedRep}}
+              <div class="ddf-rep-detail-header">
+                <h3>{{selectedRep.factionName}}</h3>
+                <button type="button" class="ddf-rep-remove-faction icon" title="Remove from reputation list">
+                  <i class="fa-solid fa-trash"></i>
+                </button>
+              </div>
+
+              {{!-- Full track --}}
+              <div class="ddf-rep-full-track">
+                {{#each selectedRep.trackBoxes}}
+                  <button type="button"
+                          class="ddf-rep-track-box large{{#if filled}} filled{{/if}}"
+                          {{#if filled}}style="background:hsl({{hue}},65%,42%);border-color:hsl({{hue}},65%,42%);"{{/if}}
+                          data-faction-id="{{../selectedRep.factionId}}"
+                          data-value="{{value}}"
+                          title="Set to {{value}}"></button>
+                {{/each}}
+              </div>
+              <div class="ddf-rep-value-display">{{selectedRep.current}} / {{selectedRep.maxValue}}</div>
+
+              {{!-- Quick +/- --}}
+              <div class="ddf-rep-quick-row">
+                <button type="button" class="ddf-rep-dec" title="Decrease by 1"><i class="fa-solid fa-minus"></i></button>
+                <button type="button" class="ddf-rep-inc" title="Increase by 1"><i class="fa-solid fa-plus"></i></button>
+              </div>
+
+              {{!-- Record with note --}}
+              <div class="ddf-rep-record-row">
+                <input type="number" class="ddf-rep-delta-input" placeholder="±" min="-99" max="99" />
+                <input type="text"   class="ddf-rep-note-input"  placeholder="Optional note…" />
+                <button type="button" class="ddf-rep-record-btn">Record</button>
+              </div>
+
+              {{!-- Per-faction max override --}}
+              <div class="ddf-rep-max-row">
+                <label>Track Max</label>
+                <input type="number" class="ddf-rep-max-input"
+                       value="{{selectedRep.maxValue}}" min="1" max="99" />
+                <span class="ddf-rep-max-hint">(global default: {{globalRepMax}})</span>
+              </div>
+
+              {{!-- Recent entries --}}
+              {{#if selectedRep.recentEntries.length}}
+                <div class="ddf-rep-recent-header">Recent Changes</div>
+                {{#each selectedRep.recentEntries}}
+                  <div class="ddf-rep-entry">
+                    <span class="ddf-rep-entry-delta {{#if (gt delta 0)}}positive{{else}}{{#if (lt delta 0)}}negative{{/if}}{{/if}}">
+                      {{#if (gt delta 0)}}+{{/if}}{{delta}}
+                    </span>
+                    <span class="ddf-rep-entry-note">{{#if note}}{{note}}{{else}}<em>—</em>{{/if}}</span>
+                    <span class="ddf-rep-entry-time">{{formattedTime}}</span>
+                  </div>
+                {{/each}}
+              {{/if}}
+
+              <button type="button" class="ddf-rep-view-log">
+                <i class="fa-solid fa-clock-rotate-left"></i> View Full Log…
+              </button>
+
+            {{else}}
+              <div class="faction-no-selection">Select a faction to view its reputation.</div>
+            {{/if}}
+          </div>
+
+        </div>
+      {{else}}
+        <div class="faction-no-selection">
+          <i class="fa-solid fa-people-group"></i>
+          <p>Select a party to view reputation.</p>
         </div>
       {{/if}}
     </section>

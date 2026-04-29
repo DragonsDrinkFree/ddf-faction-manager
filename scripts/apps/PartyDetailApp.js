@@ -2,6 +2,8 @@ import { FactionStore } from "../data/FactionStore.js";
 import { ProjectStore } from "../data/ProjectStore.js";
 import { RelationshipStore } from "../data/RelationshipStore.js";
 import { EventLogStore } from "../data/EventLogStore.js";
+import { ReputationStore } from "../data/ReputationStore.js";
+import { ReputationLogApp } from "./ReputationLogApp.js";
 import { tryAddSessionNote, syncSandboxPartyMembers } from "../utils/SandboxIntegration.js";
 import {
   getConnectionTypes,
@@ -28,6 +30,9 @@ export class PartyDetailApp extends HandlebarsApplicationMixin(ApplicationV2) {
   #activeTab = "overview";
   #editingOverview = false;
   #editingNoteId = null;
+  #noteExpanded = false;
+  /** ID of the faction currently selected in the Reputation tab. */
+  #selectedRepFactionId = null;
 
   /**
    * @param {string} factionId
@@ -77,8 +82,7 @@ export class PartyDetailApp extends HandlebarsApplicationMixin(ApplicationV2) {
       saveMemberNote:    PartyDetailApp.#onSaveMemberNote,
       deleteMemberNote:  PartyDetailApp.#onDeleteMemberNote,
       editObjective:     PartyDetailApp.#onEditObjective,
-      addTag:            PartyDetailApp.#onAddTag,
-      deleteTag:         PartyDetailApp.#onDeleteTag
+      toggleNote:        PartyDetailApp.#onToggleNote
     }
   };
 
@@ -90,7 +94,9 @@ export class PartyDetailApp extends HandlebarsApplicationMixin(ApplicationV2) {
         ".faction-connections-body",
         ".project-notes-log",
         ".project-items",
-        ".event-log-list"
+        ".event-log-list",
+        ".ddf-rep-list-pane",
+        ".ddf-rep-detail-pane"
       ]
     }
   };
@@ -133,6 +139,7 @@ export class PartyDetailApp extends HandlebarsApplicationMixin(ApplicationV2) {
     context.tabs = [
       { id: "overview",    label: "Overview",    icon: "fa-solid fa-scroll",            cssClass: this.#activeTab === "overview"    ? "active" : "" },
       { id: "projects",    label: "Objectives",  icon: "fa-solid fa-list-check",        cssClass: this.#activeTab === "projects"    ? "active" : "" },
+      { id: "reputation",  label: "Reputation",  icon: "fa-solid fa-handshake",         cssClass: this.#activeTab === "reputation"  ? "active" : "" },
       { id: "connections", label: "Connections", icon: "fa-solid fa-circle-nodes",      cssClass: this.#activeTab === "connections" ? "active" : "" },
       { id: "eventlog",    label: "Event Log",   icon: "fa-solid fa-clock-rotate-left", cssClass: this.#activeTab === "eventlog"    ? "active" : "" }
     ];
@@ -201,10 +208,23 @@ export class PartyDetailApp extends HandlebarsApplicationMixin(ApplicationV2) {
     context.selectedPersonKind = this.#selectedPersonKind;
     context.selectedPerson     = await this.#buildSelectedPersonContext();
 
-    // Tags (Overview tab)
-    const sf = context.selectedFaction;
-    context.factionTags = sf?.tags ?? [];
-    context.allTags     = FactionStore.getAllTags();
+    // Currency types + wage/share totals
+    context.currencyTypes = PartyDetailApp.#readCurrencyTypes();
+    const defaultCurrency = context.currencyTypes[0]?.id ?? "";
+    const wageTotals = {};
+    let totalShares = 0;
+    for (const r of rawRetainers) {
+      totalShares += r.wages?.treasureShare ?? 0;
+      const amount   = r.wages?.weeklyWages ?? 0;
+      const currency = r.wages?.weeklyWagesCurrency || defaultCurrency;
+      if (amount > 0) wageTotals[currency] = (wageTotals[currency] ?? 0) + amount;
+    }
+    context.totalTreasureShares = totalShares;
+    context.retainerWageTotals  = Object.entries(wageTotals)
+      .map(([currency, amount]) => ({ currency, amount }))
+      .sort((a, b) => a.currency.localeCompare(b.currency));
+
+    context.noteExpanded = this.#noteExpanded;
 
     // Event Log tab
     context.eventLogEntries = this.#selectedFactionId
@@ -213,6 +233,51 @@ export class PartyDetailApp extends HandlebarsApplicationMixin(ApplicationV2) {
           formattedTime: new Date(e.timestamp).toLocaleString()
         }))
       : [];
+
+    // Reputation tab
+    if (this.#activeTab === "reputation" && this.#selectedFactionId) {
+      const repData    = ReputationStore.getForParty(this.#selectedFactionId);
+      const allFactions = FactionStore.getAll();
+      context.globalRepMax = ReputationStore.getEffectiveMax(null);
+
+      context.reputations = Object.values(repData)
+        .map(entry => {
+          const faction = allFactions[entry.factionId];
+          const maxVal  = ReputationStore.getEffectiveMax(entry);
+          return {
+            ...entry,
+            factionName: faction?.name ?? "Unknown",
+            maxValue:    maxVal,
+            isSelected:  entry.factionId === this.#selectedRepFactionId,
+            trackBoxes:  Array.from({ length: maxVal }, (_, i) => ({
+              value:  i + 1,
+              filled: (i + 1) <= entry.current,
+              hue:    Math.round(((i + 1) / maxVal) * 120)
+            }))
+          };
+        })
+        .sort((a, b) => a.factionName.localeCompare(b.factionName));
+
+      if (this.#selectedRepFactionId && repData[this.#selectedRepFactionId]) {
+        const sel    = repData[this.#selectedRepFactionId];
+        const maxVal = ReputationStore.getEffectiveMax(sel);
+        context.selectedRep = {
+          ...sel,
+          factionName: allFactions[sel.factionId]?.name ?? "Unknown",
+          maxValue:    maxVal,
+          trackBoxes:  Array.from({ length: maxVal }, (_, i) => ({
+            value:  i + 1,
+            filled: (i + 1) <= sel.current,
+            hue:    Math.round(((i + 1) / maxVal) * 120)
+          })),
+          recentEntries: [...sel.entries].reverse().slice(0, 5).map(e => ({
+            ...e,
+            formattedTime: new Date(e.timestamp).toLocaleString(),
+            deltaLabel:    e.delta > 0 ? `+${e.delta}` : `${e.delta}`
+          }))
+        };
+      }
+    }
 
     return context;
   }
@@ -378,6 +443,80 @@ export class PartyDetailApp extends HandlebarsApplicationMixin(ApplicationV2) {
       });
     }
 
+    // ── Reputation tab wiring ────────────────────────────────────────────────
+    const el = this.element;
+
+    el.querySelectorAll(".ddf-rep-faction-row").forEach(row => {
+      row.addEventListener("click", () => {
+        this.#selectedRepFactionId = row.dataset.factionId ?? null;
+        this.render({ parts: ["content"] });
+      });
+    });
+
+    el.querySelector(".ddf-rep-add-faction")?.addEventListener("click", (e) => {
+      this.#showRepFactionSearch(e.currentTarget);
+    });
+
+    el.querySelector(".ddf-rep-remove-faction")?.addEventListener("click", async () => {
+      if (!this.#selectedRepFactionId) return;
+      await ReputationStore.removeFaction(this.#selectedFactionId, this.#selectedRepFactionId);
+      this.#selectedRepFactionId = null;
+      this.render({ parts: ["content"] });
+    });
+
+    el.querySelector(".ddf-rep-inc")?.addEventListener("click", async () => {
+      if (!this.#selectedRepFactionId) return;
+      await ReputationStore.recordChange(this.#selectedFactionId, this.#selectedRepFactionId, 1, "");
+      this.render({ parts: ["content"] });
+    });
+
+    el.querySelector(".ddf-rep-dec")?.addEventListener("click", async () => {
+      if (!this.#selectedRepFactionId) return;
+      await ReputationStore.recordChange(this.#selectedFactionId, this.#selectedRepFactionId, -1, "");
+      this.render({ parts: ["content"] });
+    });
+
+    el.querySelector(".ddf-rep-record-btn")?.addEventListener("click", async () => {
+      const deltaInput = el.querySelector(".ddf-rep-delta-input");
+      const noteInput  = el.querySelector(".ddf-rep-note-input");
+      const delta      = parseInt(deltaInput?.value ?? "0", 10);
+      if (!delta) return;
+      const note = noteInput?.value?.trim() ?? "";
+      await ReputationStore.recordChange(this.#selectedFactionId, this.#selectedRepFactionId, delta, note);
+      if (deltaInput) deltaInput.value = "";
+      if (noteInput)  noteInput.value  = "";
+      this.render({ parts: ["content"] });
+    });
+
+    el.querySelector(".ddf-rep-max-input")?.addEventListener("change", async (e) => {
+      const val = parseInt(e.target.value, 10);
+      if (isNaN(val) || val < 1) return;
+      await ReputationStore.setMaxOverride(this.#selectedFactionId, this.#selectedRepFactionId, val);
+      this.render({ parts: ["content"] });
+    });
+
+    el.querySelector(".ddf-rep-view-log")?.addEventListener("click", () => {
+      if (!this.#selectedRepFactionId) return;
+      ReputationLogApp.show(this.#selectedFactionId, this.#selectedRepFactionId);
+    });
+
+    el.querySelectorAll(".ddf-rep-track-box").forEach(box => {
+      box.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const factionId = box.dataset.factionId;
+        const value     = parseInt(box.dataset.value, 10);
+        if (!factionId || isNaN(value)) return;
+        const entry = ReputationStore.getEntry(this.#selectedFactionId, factionId);
+        if (!entry) return;
+        const current = entry.current;
+        const target  = current === value ? value - 1 : value;
+        const delta   = target - current;
+        if (!delta) return;
+        await ReputationStore.recordChange(this.#selectedFactionId, factionId, delta, "");
+        this.render({ parts: ["content"] });
+      });
+    });
+
     // ── Person detail wiring (party member or retainer) ──────────────────────
     if (this.#selectedPersonId && this.#selectedPersonKind) {
       // Display name: auto-save on blur or Enter
@@ -402,13 +541,26 @@ export class PartyDetailApp extends HandlebarsApplicationMixin(ApplicationV2) {
         input.addEventListener("change", async (e) => {
           if (this.#selectedPersonKind !== "retainer") return;
           const field = e.target.dataset.wageField;
-          const value = parseInt(e.target.value, 10) || 0;
+          const value = parseFloat(e.target.value) || 0;
           const person = this.#findPerson("retainer", this.#selectedPersonId);
           if (!person) return;
           const wages = { ...(person.wages ?? { treasureShare: 0, weeklyWages: 0 }), [field]: value };
           await this.#updatePerson("retainer", this.#selectedPersonId, { wages });
         });
       });
+
+      // Currency select (retainer-only): auto-save on change
+      const currencySelect = this.element.querySelector(".retainer-currency-select");
+      if (currencySelect) {
+        currencySelect.addEventListener("change", async (e) => {
+          if (this.#selectedPersonKind !== "retainer") return;
+          const person = this.#findPerson("retainer", this.#selectedPersonId);
+          if (!person) return;
+          const wages = { ...(person.wages ?? { treasureShare: 0, weeklyWages: 0 }), weeklyWagesCurrency: e.target.value };
+          await this.#updatePerson("retainer", this.#selectedPersonId, { wages });
+          this.render({ parts: ["content"] });
+        });
+      }
 
       // Note textarea: Enter to save, Shift+Enter for newline
       const noteTextarea = this.element.querySelector(".member-note-textarea");
@@ -535,7 +687,8 @@ export class PartyDetailApp extends HandlebarsApplicationMixin(ApplicationV2) {
     const loyaltyBoxes = isRetainer
       ? Array.from({ length: 12 }, (_, i) => ({
           value:  i + 1,
-          filled: (i + 1) <= (person.loyalty ?? 0)
+          filled: (i + 1) <= (person.loyalty ?? 0),
+          hue:    Math.round(((i + 1) / 12) * 120)
         }))
       : null;
 
@@ -554,6 +707,13 @@ export class PartyDetailApp extends HandlebarsApplicationMixin(ApplicationV2) {
       wages: person.wages ?? { treasureShare: 0, weeklyWages: 0 },
       notes
     };
+  }
+
+  static #readCurrencyTypes() {
+    try {
+      const raw = game.settings.get("ddf-faction-manager", "currencyTypes");
+      return typeof raw === "string" ? JSON.parse(raw) : (raw ?? []);
+    } catch { return []; }
   }
 
   static #promptName(title, label) {
@@ -979,7 +1139,7 @@ export class PartyDetailApp extends HandlebarsApplicationMixin(ApplicationV2) {
       name,
       actorUuid: null,
       notes:     [],
-      wages:     { treasureShare: 0, weeklyWages: 0 },
+      wages:     { treasureShare: 0, weeklyWages: 0, weeklyWagesCurrency: PartyDetailApp.#readCurrencyTypes()[0]?.id ?? "" },
       loyalty:   6
     };
     await this.#appendPerson("retainer", person);
@@ -1154,47 +1314,45 @@ export class PartyDetailApp extends HandlebarsApplicationMixin(ApplicationV2) {
 
   // ─── Tag Actions ─────────────────────────────────────────────────────────────
 
-  static #onAddTag(_event, target) {
-    if (!this.#selectedFactionId) return;
-    this.#showTagAddPanel(target);
-  }
-
-  static async #onDeleteTag(_event, target) {
-    const tag = target.dataset.tag;
-    if (!tag || !this.#selectedFactionId) return;
-    const faction = FactionStore.getAll()[this.#selectedFactionId];
-    if (!faction) return;
-    const tags = (faction.tags ?? []).filter(t => t !== tag);
-    await FactionStore.update(this.#selectedFactionId, { tags });
+  static #onToggleNote(_event, _target) {
+    this.#noteExpanded = !this.#noteExpanded;
     this.render({ parts: ["content"] });
   }
 
-  #showTagAddPanel(triggerEl) {
-    document.querySelectorAll(".ddf-tag-panel").forEach(el => el.remove());
+  #showRepFactionSearch(triggerEl) {
+    document.querySelectorAll(".ddf-rep-faction-panel").forEach(el => el.remove());
 
-    const factionId   = this.#selectedFactionId;
-    const faction     = FactionStore.getAll()[factionId];
-    const currentTags = new Set(faction?.tags ?? []);
-    const allTags     = FactionStore.getAllTags().filter(t => !currentTags.has(t));
+    const allFactions = FactionStore.getAll();
+    const repData     = ReputationStore.getForParty(this.#selectedFactionId);
+    const trackedIds  = new Set(Object.keys(repData));
+    trackedIds.add(this.#selectedFactionId); // exclude the party itself
 
-    const btnRect  = triggerEl.getBoundingClientRect();
-    const PANEL_W  = 220;
-    const GAP      = 6;
+    const candidates = Object.values(allFactions)
+      .filter(f => !trackedIds.has(f.id) && f.kind !== "party")
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    const btnRect = triggerEl.getBoundingClientRect();
+    const PANEL_W = 240;
+    const GAP     = 6;
 
     const panel = document.createElement("div");
-    panel.className      = "mm-search-panel ddf-tag-panel";
+    panel.className      = "mm-search-panel ddf-rep-faction-panel";
     panel.style.position = "fixed";
     panel.style.zIndex   = "10000";
     panel.style.left     = `${Math.min(btnRect.left, window.innerWidth - PANEL_W - GAP)}px`;
     panel.style.top      = `${btnRect.bottom + GAP}px`;
 
     panel.innerHTML = `
-      <div class="mm-panel-title">Add Tag</div>
-      <input type="text" class="mm-search-input ddf-tag-input" placeholder="Type or search tags…" autofocus />
-      <div class="mm-search-results ddf-tag-list">
-        ${allTags.length
-          ? allTags.map(t => `<div class="mm-search-result" data-tag="${foundry.utils.escapeHTML(t)}">${foundry.utils.escapeHTML(t)}</div>`).join("")
-          : "<div class='mm-search-empty'>No existing tags — type to create one</div>"
+      <div class="mm-panel-title">Add Faction</div>
+      <input type="text" class="mm-search-input" placeholder="Filter factions…" autofocus />
+      <div class="mm-search-results ddf-conn-faction-list">
+        ${candidates.length
+          ? candidates.map(f => `
+              <div class="mm-search-result" data-id="${f.id}">
+                <i class="fa-solid fa-shield-halved ddf-link-icon"></i>
+                <span>${foundry.utils.escapeHTML(f.name)}</span>
+              </div>`).join("")
+          : "<div class='mm-search-empty'>No factions available</div>"
         }
       </div>
     `;
@@ -1205,29 +1363,17 @@ export class PartyDetailApp extends HandlebarsApplicationMixin(ApplicationV2) {
     input.addEventListener("input", () => {
       const q = input.value.toLowerCase();
       results.querySelectorAll(".mm-search-result").forEach(el => {
-        el.style.display = el.dataset.tag.toLowerCase().includes(q) ? "" : "none";
+        el.style.display = el.textContent.toLowerCase().includes(q) ? "" : "none";
       });
     });
 
-    const addTag = async (tag) => {
-      tag = tag.trim();
-      if (!tag) return;
-      const f = FactionStore.getAll()[factionId];
-      if (!f) return;
-      const tags = [...new Set([...(f.tags ?? []), tag])];
-      await FactionStore.update(factionId, { tags });
-      panel.remove();
-      this.render({ parts: ["content"] });
-    };
-
     results.addEventListener("click", async (e) => {
       const el = e.target.closest(".mm-search-result");
-      if (el) await addTag(el.dataset.tag);
-    });
-
-    input.addEventListener("keydown", async (e) => {
-      if (e.key === "Enter") { e.preventDefault(); await addTag(input.value); }
-      if (e.key === "Escape") panel.remove();
+      if (!el) return;
+      panel.remove();
+      await ReputationStore.addFaction(this.#selectedFactionId, el.dataset.id);
+      this.#selectedRepFactionId = el.dataset.id;
+      this.render({ parts: ["content"] });
     });
 
     document.body.appendChild(panel);
