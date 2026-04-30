@@ -34,16 +34,30 @@ export class RelationshipStore {
       scope: "world",
       config: false,
       type: Object,
-      default: { edges: {}, positions: {} }
+      default: { edges: {}, positions: {}, pinnedDocuments: {}, documentSizes: {} }
+    });
+
+    // One-time migration: backfill nested fields added in later module versions.
+    Hooks.once("ready", async () => {
+      if (!game.user.isGM) return;
+      const data = game.settings.get(MODULE_ID, SETTING_KEY) ?? {};
+      let dirty = false;
+      if (!data.edges)           { data.edges           = {}; dirty = true; }
+      if (!data.positions)       { data.positions       = {}; dirty = true; }
+      if (!data.pinnedDocuments) { data.pinnedDocuments = {}; dirty = true; }
+      if (!data.documentSizes)   { data.documentSizes   = {}; dirty = true; }
+      if (dirty) await game.settings.set(MODULE_ID, SETTING_KEY, data);
     });
   }
 
   static getAll() {
     const data = game.settings.get(MODULE_ID, SETTING_KEY) ?? {};
-    if (!data.edges)           data.edges           = {};
-    if (!data.positions)       data.positions        = {};
-    if (!data.pinnedDocuments) data.pinnedDocuments  = {};
-    if (!data.documentSizes)   data.documentSizes    = {};
+    // Defensive read-side fallback for non-GM clients (the GM-only ready-hook
+    // migration won't have persisted these fields yet on their world copy).
+    data.edges           ??= {};
+    data.positions       ??= {};
+    data.pinnedDocuments ??= {};
+    data.documentSizes   ??= {};
     return data;
   }
 
@@ -234,11 +248,6 @@ export class RelationshipStore {
   }
 
   /**
-   * Removes all edges and positions involving a deleted faction.
-   * Called by FactionStore.delete() to keep data consistent.
-   * @param {string} factionId
-   */
-  /**
    * Removes a document completely from the map: deletes the pinned entry
    * and every faction→document edge referencing this UUID.
    * @param {string} uuid
@@ -257,6 +266,11 @@ export class RelationshipStore {
     await this._save(data);
   }
 
+  /**
+   * Removes all edges and positions involving a deleted faction.
+   * Called by FactionStore.delete() to keep data consistent.
+   * @param {string} factionId
+   */
   static async cleanupFaction(factionId) {
     const data = this.getAll();
     for (const id of Object.keys(data.edges)) {

@@ -18,6 +18,8 @@ function getScm() {
  *
  * @param {string} text        - Note body
  * @param {string} factionName - Used as a tag alongside "Faction"
+ * @param {string|null} settingKey - When set, the matching toggle in module
+ *                                   settings must be enabled or this is a no-op.
  */
 export async function tryAddSessionNote(text, factionName, settingKey = null) {
   try {
@@ -25,7 +27,7 @@ export async function tryAddSessionNote(text, factionName, settingKey = null) {
       const enabled = game.settings.get("ddf-faction-manager", settingKey) ?? true;
       if (!enabled) return;
     }
-    const scm = game.modules.get("sandbox-campaign-manager")?.api;
+    const scm = getScm();
     if (!scm) return;
     await scm.addSessionNote({ text, tags: ["Faction", factionName] });
   } catch { /* no active session, or module unavailable */ }

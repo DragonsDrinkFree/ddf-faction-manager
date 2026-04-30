@@ -4,43 +4,29 @@ import { RelationshipStore } from "../data/RelationshipStore.js";
 import { EventLogStore } from "../data/EventLogStore.js";
 import { ReputationStore } from "../data/ReputationStore.js";
 import { ReputationLogApp } from "./ReputationLogApp.js";
-import { tryAddSessionNote, syncSandboxPartyMembers } from "../utils/SandboxIntegration.js";
+import { BaseDetailApp } from "./BaseDetailApp.js";
+import { syncSandboxPartyMembers } from "../utils/SandboxIntegration.js";
 import {
   getConnectionTypes,
-  connectionTypePickerHTML,
-  connectionDirectionPickerHTML,
-  readSelectedDirection,
-  readSelectedType,
-  bindPanelDismiss,
   positionPanelBesideApp
 } from "../utils/ConnectionPanelHelpers.js";
+import { promptName } from "../utils/AppHelpers.js";
+import { buildProjectContext, buildSelectedProjectContext } from "../utils/ProjectContext.js";
 
-const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
-
-export class PartyDetailApp extends HandlebarsApplicationMixin(ApplicationV2) {
+export class PartyDetailApp extends BaseDetailApp {
   /** @type {Map<string, PartyDetailApp>} factionId → open instance */
   static #instances = new Map();
+  static get instances() { return PartyDetailApp.#instances; }
+  static idPrefix      = "ddf-party-detail";
+  static fallbackTitle = "Party";
 
-  #selectedFactionId  = null;
-  #selectedProjectId  = null;
   /** ID of the currently selected party-member or retainer entry. */
   #selectedPersonId   = null;
   /** "member" | "retainer" — discriminates which array to read from. */
   #selectedPersonKind = null;
-  #activeTab = "overview";
-  #editingOverview = false;
-  #editingNoteId = null;
   #noteExpanded = false;
   /** ID of the faction currently selected in the Reputation tab. */
   #selectedRepFactionId = null;
-
-  /**
-   * @param {string} factionId
-   */
-  constructor(factionId) {
-    super({ id: `ddf-party-detail-${factionId}` });
-    this.#selectedFactionId = factionId;
-  }
 
   static DEFAULT_OPTIONS = {
     id: "ddf-party-detail",
@@ -55,22 +41,7 @@ export class PartyDetailApp extends HandlebarsApplicationMixin(ApplicationV2) {
       height: 520
     },
     actions: {
-      switchTab:         PartyDetailApp.#onSwitchTab,
-      createProject:     PartyDetailApp.#onCreateProject,
-      selectProject:     PartyDetailApp.#onSelectProject,
-      editOverview:      PartyDetailApp.#onEditOverview,
-      saveOverview:      PartyDetailApp.#onSaveOverview,
-      cancelOverview:    PartyDetailApp.#onCancelOverview,
-      saveInlineNote:    PartyDetailApp.#onSaveInlineNote,
-      cancelNoteEdit:    PartyDetailApp.#onCancelNoteEdit,
-      finishProject:     PartyDetailApp.#onFinishProject,
-      reactivateProject: PartyDetailApp.#onReactivateProject,
-      deleteProject:     PartyDetailApp.#onDeleteProject,
-      editNote:          PartyDetailApp.#onEditNote,
-      deleteNote:        PartyDetailApp.#onDeleteNote,
-      deleteConnection:  PartyDetailApp.#onDeleteConnection,
-      addConnection:     PartyDetailApp.#onAddConnection,
-      openConnection:    PartyDetailApp.#onOpenConnection,
+      ...BaseDetailApp.SHARED_ACTIONS,
       addMember:         PartyDetailApp.#onAddMember,
       addRetainer:       PartyDetailApp.#onAddRetainer,
       selectPerson:      PartyDetailApp.#onSelectPerson,
@@ -81,7 +52,6 @@ export class PartyDetailApp extends HandlebarsApplicationMixin(ApplicationV2) {
       setLoyalty:        PartyDetailApp.#onSetLoyalty,
       saveMemberNote:    PartyDetailApp.#onSaveMemberNote,
       deleteMemberNote:  PartyDetailApp.#onDeleteMemberNote,
-      editObjective:     PartyDetailApp.#onEditObjective,
       toggleNote:        PartyDetailApp.#onToggleNote
     }
   };
@@ -101,33 +71,15 @@ export class PartyDetailApp extends HandlebarsApplicationMixin(ApplicationV2) {
     }
   };
 
-  get title() {
-    return FactionStore.getAll()[this.#selectedFactionId]?.name ?? "Party";
-  }
-
   /**
-   * Open a detail window for the given faction.
-   * If a window for that faction is already open, bring it to front.
-   * @param {string} factionId
+   * Override of BaseDetailApp.show — reconciles sandbox-managed members
+   * before rendering, so the open sheet reflects the current Sandbox party
+   * roster (no-op if SCM is absent or the party has no sandboxPartyId).
    */
   static async show(factionId) {
     if (!game.user.isGM) return;
-
-    // Reconcile sandbox-managed members before rendering, so the open sheet
-    // reflects the current Sandbox party roster (no-op if SCM is absent or the
-    // party has no sandboxPartyId).
     await syncSandboxPartyMembers(factionId);
-
-    // Reuse an already-open window for this faction
-    const existing = PartyDetailApp.#instances.get(factionId);
-    if (existing?.element?.isConnected) {
-      existing.render({ force: true });
-      return;
-    }
-
-    const app = new PartyDetailApp(factionId);
-    PartyDetailApp.#instances.set(factionId, app);
-    app.render({ force: true });
+    super.show(factionId);
   }
 
   // ─── Context ─────────────────────────────────────────────────────────────────
@@ -135,13 +87,13 @@ export class PartyDetailApp extends HandlebarsApplicationMixin(ApplicationV2) {
   /** @override */
   async _prepareContext(options) {
     const context = await super._prepareContext(options);
-    context.activeTab = this.#activeTab;
+    context.activeTab = this._activeTab;
     context.tabs = [
-      { id: "overview",    label: "Overview",    icon: "fa-solid fa-scroll",            cssClass: this.#activeTab === "overview"    ? "active" : "" },
-      { id: "projects",    label: "Objectives",  icon: "fa-solid fa-list-check",        cssClass: this.#activeTab === "projects"    ? "active" : "" },
-      { id: "reputation",  label: "Reputation",  icon: "fa-solid fa-handshake",         cssClass: this.#activeTab === "reputation"  ? "active" : "" },
-      { id: "connections", label: "Connections", icon: "fa-solid fa-circle-nodes",      cssClass: this.#activeTab === "connections" ? "active" : "" },
-      { id: "eventlog",    label: "Event Log",   icon: "fa-solid fa-clock-rotate-left", cssClass: this.#activeTab === "eventlog"    ? "active" : "" }
+      { id: "overview",    label: "Overview",    icon: "fa-solid fa-scroll",            cssClass: this._activeTab === "overview"    ? "active" : "" },
+      { id: "projects",    label: "Objectives",  icon: "fa-solid fa-list-check",        cssClass: this._activeTab === "projects"    ? "active" : "" },
+      { id: "reputation",  label: "Reputation",  icon: "fa-solid fa-handshake",         cssClass: this._activeTab === "reputation"  ? "active" : "" },
+      { id: "connections", label: "Connections", icon: "fa-solid fa-circle-nodes",      cssClass: this._activeTab === "connections" ? "active" : "" },
+      { id: "eventlog",    label: "Event Log",   icon: "fa-solid fa-clock-rotate-left", cssClass: this._activeTab === "eventlog"    ? "active" : "" }
     ];
     return context;
   }
@@ -152,33 +104,33 @@ export class PartyDetailApp extends HandlebarsApplicationMixin(ApplicationV2) {
 
     if (partId !== "content") return context;
 
-    context.selectedFaction = this.#selectedFactionId
-      ? FactionStore.getAll()[this.#selectedFactionId] ?? null
+    context.selectedFaction = this._selectedFactionId
+      ? FactionStore.getAll()[this._selectedFactionId] ?? null
       : null;
 
     // Auto-select first active project when switching to the Projects tab
-    if (this.#activeTab === "projects" && this.#selectedFactionId && !this.#selectedProjectId) {
-      const all = ProjectStore.getForFaction(this.#selectedFactionId);
+    if (this._activeTab === "projects" && this._selectedFactionId && !this._selectedProjectId) {
+      const all = ProjectStore.getForFaction(this._selectedFactionId);
       const sorted = all.sort((a, b) => a.name.localeCompare(b.name));
       const first = sorted.find(p => p.status === "active") ?? sorted[0];
-      if (first) this.#selectedProjectId = first.id;
+      if (first) this._selectedProjectId = first.id;
     }
 
     // Overview: GM quick note + connections list
     context.partyNote         = context.selectedFaction?.partyNote ?? "";
     context.connectionTypes   = getConnectionTypes();
-    context.relationshipItems = this.#selectedFactionId
+    context.relationshipItems = this._selectedFactionId
       ? this.#buildRelationshipItems()
       : [];
 
     // Objectives tab
-    context.selectedProjectId = this.#selectedProjectId;
-    context.projects           = this.#buildProjectContext();
-    context.selectedProject    = this.#buildSelectedProjectContext();
-    context.editingOverview    = this.#editingOverview;
-    context.editingNoteId      = this.#editingNoteId;
+    context.selectedProjectId = this._selectedProjectId;
+    context.projects           = buildProjectContext(this._selectedFactionId);
+    context.selectedProject    = buildSelectedProjectContext(this._selectedProjectId);
+    context.editingOverview    = this._editingOverview;
+    context.editingNoteId      = this._editingNoteId;
 
-    if (context.selectedProject && !this.#editingOverview) {
+    if (context.selectedProject && !this._editingOverview) {
       context.selectedProject.enrichedDescription =
         await foundry.applications.ux.TextEditor.implementation.enrichHTML(
           context.selectedProject.description ?? "", { async: true }
@@ -227,16 +179,16 @@ export class PartyDetailApp extends HandlebarsApplicationMixin(ApplicationV2) {
     context.noteExpanded = this.#noteExpanded;
 
     // Event Log tab
-    context.eventLogEntries = this.#selectedFactionId
-      ? EventLogStore.getForFaction(this.#selectedFactionId).map(e => ({
+    context.eventLogEntries = this._selectedFactionId
+      ? EventLogStore.getForFaction(this._selectedFactionId).map(e => ({
           ...e,
           formattedTime: new Date(e.timestamp).toLocaleString()
         }))
       : [];
 
     // Reputation tab
-    if (this.#activeTab === "reputation" && this.#selectedFactionId) {
-      const repData    = ReputationStore.getForParty(this.#selectedFactionId);
+    if (this._activeTab === "reputation" && this._selectedFactionId) {
+      const repData    = ReputationStore.getForParty(this._selectedFactionId);
       const allFactions = FactionStore.getAll();
       context.globalRepMax = ReputationStore.getEffectiveMax(null);
 
@@ -282,21 +234,11 @@ export class PartyDetailApp extends HandlebarsApplicationMixin(ApplicationV2) {
     return context;
   }
 
-  // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-  /** Log an event for the current faction and optionally push to Sandbox. */
-  async #logEvent(category, text, settingKey = null) {
-    if (!this.#selectedFactionId) return;
-    const factionName = FactionStore.getAll()[this.#selectedFactionId]?.name ?? "Faction";
-    await EventLogStore.addEntry(this.#selectedFactionId, category, text);
-    await tryAddSessionNote(text, factionName, settingKey);
-  }
-
   // ─── Relationship Items (read-only list for Overview pane) ────────────────────
 
   #buildRelationshipItems() {
     const allFactions = FactionStore.getAll();
-    const storedEdges = RelationshipStore.getEdgesForFaction(this.#selectedFactionId);
+    const storedEdges = RelationshipStore.getEdgesForFaction(this._selectedFactionId);
 
     const ICON = {
       Actor:        "fa-solid fa-user",
@@ -357,21 +299,21 @@ export class PartyDetailApp extends HandlebarsApplicationMixin(ApplicationV2) {
 
     // ── Party node color: auto-save on change ────────────────────────────────
     const colorPicker = this.element.querySelector('input[name="partyColor"]');
-    if (colorPicker && this.#selectedFactionId) {
+    if (colorPicker && this._selectedFactionId) {
       colorPicker.addEventListener("change", async (e) => {
-        await FactionStore.update(this.#selectedFactionId, { color: e.target.value });
+        await FactionStore.update(this._selectedFactionId, { color: e.target.value });
       });
     }
 
     // ── GM Quick Note: auto-save on blur or Enter (does not re-render) ───────
     const quickNote = this.element.querySelector(".party-quick-note-textarea");
-    if (quickNote && this.#selectedFactionId) {
+    if (quickNote && this._selectedFactionId) {
       quickNote.addEventListener("blur", async () => {
         const note = quickNote.value;
-        const faction = FactionStore.getAll()[this.#selectedFactionId];
+        const faction = FactionStore.getAll()[this._selectedFactionId];
         if (!faction) return;
         if ((faction.partyNote ?? "") === note) return;  // no-op when unchanged
-        await FactionStore.update(this.#selectedFactionId, { partyNote: note });
+        await FactionStore.update(this._selectedFactionId, { partyNote: note });
       });
     }
 
@@ -384,7 +326,7 @@ export class PartyDetailApp extends HandlebarsApplicationMixin(ApplicationV2) {
         const typeName = typeId
           ? (getConnectionTypes().find(t => t.id === typeId)?.name ?? typeId)
           : "none";
-        await this.#logEvent("connection", `Connection type changed to: ${typeName}`, "scmConnectionTypeChanged");
+        await this._logEvent("connection", `Connection type changed to: ${typeName}`, "scmConnectionTypeChanged");
         this.render({ parts: ["content"] });
       });
     });
@@ -399,7 +341,7 @@ export class PartyDetailApp extends HandlebarsApplicationMixin(ApplicationV2) {
         const next       = current === "two-way" ? "one-way" : "two-way";
         const swapParties = isReversed && next === "one-way";
         await RelationshipStore.updateEdgeDirection(edgeId, next, { swapParties });
-        await this.#logEvent("connection", `Connection direction changed to: ${next}`, "scmConnectionDirectionChanged");
+        await this._logEvent("connection", `Connection direction changed to: ${next}`, "scmConnectionDirectionChanged");
         this.render({ parts: ["content"] });
       });
     });
@@ -411,9 +353,9 @@ export class PartyDetailApp extends HandlebarsApplicationMixin(ApplicationV2) {
 
     if (textarea) {
       // Pre-fill editor when editing an existing note
-      if (this.#editingNoteId && this.#selectedProjectId) {
-        const project = ProjectStore.getAll()[this.#selectedProjectId];
-        const note    = project?.notes.find(n => n.id === this.#editingNoteId);
+      if (this._editingNoteId && this._selectedProjectId) {
+        const project = ProjectStore.getAll()[this._selectedProjectId];
+        const note    = project?.notes.find(n => n.id === this._editingNoteId);
         if (note) {
           textarea.value = note.text;
           textarea.focus();
@@ -459,20 +401,20 @@ export class PartyDetailApp extends HandlebarsApplicationMixin(ApplicationV2) {
 
     el.querySelector(".ddf-rep-remove-faction")?.addEventListener("click", async () => {
       if (!this.#selectedRepFactionId) return;
-      await ReputationStore.removeFaction(this.#selectedFactionId, this.#selectedRepFactionId);
+      await ReputationStore.removeFaction(this._selectedFactionId, this.#selectedRepFactionId);
       this.#selectedRepFactionId = null;
       this.render({ parts: ["content"] });
     });
 
     el.querySelector(".ddf-rep-inc")?.addEventListener("click", async () => {
       if (!this.#selectedRepFactionId) return;
-      await ReputationStore.recordChange(this.#selectedFactionId, this.#selectedRepFactionId, 1, "");
+      await ReputationStore.recordChange(this._selectedFactionId, this.#selectedRepFactionId, 1, "");
       this.render({ parts: ["content"] });
     });
 
     el.querySelector(".ddf-rep-dec")?.addEventListener("click", async () => {
       if (!this.#selectedRepFactionId) return;
-      await ReputationStore.recordChange(this.#selectedFactionId, this.#selectedRepFactionId, -1, "");
+      await ReputationStore.recordChange(this._selectedFactionId, this.#selectedRepFactionId, -1, "");
       this.render({ parts: ["content"] });
     });
 
@@ -482,7 +424,7 @@ export class PartyDetailApp extends HandlebarsApplicationMixin(ApplicationV2) {
       const delta      = parseInt(deltaInput?.value ?? "0", 10);
       if (!delta) return;
       const note = noteInput?.value?.trim() ?? "";
-      await ReputationStore.recordChange(this.#selectedFactionId, this.#selectedRepFactionId, delta, note);
+      await ReputationStore.recordChange(this._selectedFactionId, this.#selectedRepFactionId, delta, note);
       if (deltaInput) deltaInput.value = "";
       if (noteInput)  noteInput.value  = "";
       this.render({ parts: ["content"] });
@@ -491,13 +433,13 @@ export class PartyDetailApp extends HandlebarsApplicationMixin(ApplicationV2) {
     el.querySelector(".ddf-rep-max-input")?.addEventListener("change", async (e) => {
       const val = parseInt(e.target.value, 10);
       if (isNaN(val) || val < 1) return;
-      await ReputationStore.setMaxOverride(this.#selectedFactionId, this.#selectedRepFactionId, val);
+      await ReputationStore.setMaxOverride(this._selectedFactionId, this.#selectedRepFactionId, val);
       this.render({ parts: ["content"] });
     });
 
     el.querySelector(".ddf-rep-view-log")?.addEventListener("click", () => {
       if (!this.#selectedRepFactionId) return;
-      ReputationLogApp.show(this.#selectedFactionId, this.#selectedRepFactionId);
+      ReputationLogApp.show(this._selectedFactionId, this.#selectedRepFactionId);
     });
 
     el.querySelectorAll(".ddf-rep-track-box").forEach(box => {
@@ -506,13 +448,13 @@ export class PartyDetailApp extends HandlebarsApplicationMixin(ApplicationV2) {
         const factionId = box.dataset.factionId;
         const value     = parseInt(box.dataset.value, 10);
         if (!factionId || isNaN(value)) return;
-        const entry = ReputationStore.getEntry(this.#selectedFactionId, factionId);
+        const entry = ReputationStore.getEntry(this._selectedFactionId, factionId);
         if (!entry) return;
         const current = entry.current;
         const target  = current === value ? value - 1 : value;
         const delta   = target - current;
         if (!delta) return;
-        await ReputationStore.recordChange(this.#selectedFactionId, factionId, delta, "");
+        await ReputationStore.recordChange(this._selectedFactionId, factionId, delta, "");
         this.render({ parts: ["content"] });
       });
     });
@@ -576,56 +518,6 @@ export class PartyDetailApp extends HandlebarsApplicationMixin(ApplicationV2) {
 
   }
 
-  // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-  /** Convert filled/sections into 4 quarter-bar descriptors for list display. */
-  static #quarterBars(filled, sections) {
-    const pct = sections > 0 ? (filled / sections) * 100 : 0;
-    return [0, 1, 2, 3].map(i => {
-      const low  = i * 25;
-      const high = low + 25;
-      if (pct >= high) return { filled: true,  partial: 100 };
-      if (pct <= low)  return { filled: false, partial: 0 };
-      return { filled: false, partial: Math.round((pct - low) / 25 * 100) };
-    });
-  }
-
-  #buildProjectContext() {
-    if (!this.#selectedFactionId) return { active: [], finished: [] };
-    const all = ProjectStore.getForFaction(this.#selectedFactionId);
-    const decorate = p => {
-      // Legacy support: projects with old progress (0-100) field treated as 4-pip tracks
-      const sections = p.sections ?? 4;
-      const filled   = p.filled   ?? Math.round((p.progress ?? 0) / 25);
-      return { ...p, sections, filled, quarterBars: PartyDetailApp.#quarterBars(filled, sections) };
-    };
-    const sort = arr => arr.sort((a, b) => a.name.localeCompare(b.name)).map(decorate);
-    return {
-      active:   sort(all.filter(p => p.status === "active")),
-      finished: sort(all.filter(p => p.status === "finished"))
-    };
-  }
-
-  #buildSelectedProjectContext() {
-    if (!this.#selectedProjectId) return null;
-    const project = ProjectStore.getAll()[this.#selectedProjectId];
-    if (!project) return null;
-
-    const sections = project.sections ?? 4;
-    const filled   = project.filled   ?? Math.round((project.progress ?? 0) / 25);
-
-    const notes = [...project.notes].reverse().map(n => ({
-      ...n,
-      formattedDate:  new Date(n.timestamp).toLocaleString(),
-      formattedDelta: n.progressDelta !== 0
-        ? `${n.progressDelta > 0 ? "+" : ""}${n.progressDelta}`
-        : "—",
-      deltaClass: n.progressDelta > 0 ? "positive" : n.progressDelta < 0 ? "negative" : "neutral"
-    }));
-
-    return { ...project, sections, filled, notes };
-  }
-
   // ─── Party Member / Retainer Helpers ─────────────────────────────────────────
 
   /** Resolve an actor UUID to a display name; null if missing or stale. */
@@ -641,7 +533,7 @@ export class PartyDetailApp extends HandlebarsApplicationMixin(ApplicationV2) {
 
   /** Returns a clone of the party's member or retainer array. */
   #getPersonList(kind) {
-    const sf = FactionStore.getAll()[this.#selectedFactionId];
+    const sf = FactionStore.getAll()[this._selectedFactionId];
     return [...(sf?.[this.#arrayKey(kind)] ?? [])];
   }
 
@@ -656,7 +548,7 @@ export class PartyDetailApp extends HandlebarsApplicationMixin(ApplicationV2) {
     const idx  = list.findIndex(p => p.id === id);
     if (idx === -1) return null;
     list[idx] = { ...list[idx], ...updates };
-    await FactionStore.update(this.#selectedFactionId, { [this.#arrayKey(kind)]: list });
+    await FactionStore.update(this._selectedFactionId, { [this.#arrayKey(kind)]: list });
     return list[idx];
   }
 
@@ -664,14 +556,14 @@ export class PartyDetailApp extends HandlebarsApplicationMixin(ApplicationV2) {
   async #appendPerson(kind, person) {
     const list = this.#getPersonList(kind);
     list.push(person);
-    await FactionStore.update(this.#selectedFactionId, { [this.#arrayKey(kind)]: list });
+    await FactionStore.update(this._selectedFactionId, { [this.#arrayKey(kind)]: list });
     return person;
   }
 
   /** Remove a person by id. */
   async #removePerson(kind, id) {
     const list = this.#getPersonList(kind).filter(p => p.id !== id);
-    await FactionStore.update(this.#selectedFactionId, { [this.#arrayKey(kind)]: list });
+    await FactionStore.update(this._selectedFactionId, { [this.#arrayKey(kind)]: list });
   }
 
   /** Build the selected-person view, decorated with derived display fields. */
@@ -716,404 +608,11 @@ export class PartyDetailApp extends HandlebarsApplicationMixin(ApplicationV2) {
     } catch { return []; }
   }
 
-  static #promptName(title, label) {
-    return new Promise(resolve => {
-      foundry.applications.api.DialogV2.prompt({
-        window: { title },
-        content: `<div class="standard-form"><div class="form-group"><label>${label}</label><div class="form-fields"><input type="text" name="name" autofocus placeholder="${label}…" /></div></div></div>`,
-        ok: {
-          label: "Create",
-          callback: (_event, button) => {
-            const value = button.form.elements.name.value.trim();
-            resolve(value || null);
-          }
-        },
-        rejectClose: false
-      }).catch(() => resolve(null));
-    });
-  }
-
-  static #promptObjective(title, existing = null) {
-    return new Promise(resolve => {
-      const defaultSections = existing?.sections ?? 8;
-      foundry.applications.api.DialogV2.prompt({
-        window: { title },
-        content: `
-          <div class="standard-form">
-            <div class="form-group">
-              <label>Name</label>
-              <div class="form-fields">
-                <input type="text" name="obj_name" autofocus
-                       value="${foundry.utils.escapeHTML(existing?.name ?? "")}"
-                       placeholder="Objective name…" />
-              </div>
-            </div>
-            <div class="form-group">
-              <label>Required Progress</label>
-              <div class="form-fields">
-                <input type="number" name="obj_sections"
-                       value="${defaultSections}" min="1" max="99" style="width:80px;" />
-              </div>
-            </div>
-          </div>`,
-        ok: {
-          label: existing ? "Save" : "Create",
-          callback: (_event, button) => {
-            const name     = button.form.elements.obj_name.value.trim();
-            const sections = parseInt(button.form.elements.obj_sections.value) || 8;
-            resolve(name ? { name, sections } : null);
-          }
-        },
-        rejectClose: false
-      }).catch(() => resolve(null));
-    });
-  }
-
-  // ─── Action Handlers ─────────────────────────────────────────────────────────
-
-  static #onSwitchTab(_event, target) {
-    const tabId = target.dataset.tab;
-    if (!tabId || tabId === this.#activeTab) return;
-    this.#activeTab = tabId;
-    this.render();
-  }
-
-  static async #onCreateProject(_event, _target) {
-    if (!this.#selectedFactionId) return;
-    const result = await PartyDetailApp.#promptObjective("New Objective");
-    if (!result) return;
-    const project = await ProjectStore.create(this.#selectedFactionId, result.name, result.sections);
-    this.#selectedProjectId = project.id;
-    await this.#logEvent("objective", `Objective created: ${project.name}`, "scmObjectiveCreated");
-    this.render();
-  }
-
-  static async #onEditObjective(_event, _target) {
-    if (!this.#selectedProjectId) return;
-    const project = ProjectStore.getAll()[this.#selectedProjectId];
-    if (!project) return;
-    const result = await PartyDetailApp.#promptObjective("Edit Objective", project);
-    if (!result) return;
-    const newFilled = Math.min(project.filled ?? 0, result.sections);
-    await ProjectStore.update(this.#selectedProjectId, { name: result.name, sections: result.sections, filled: newFilled });
-    this.render({ parts: ["content"] });
-  }
-
-  static #onSelectProject(_event, target) {
-    const id = target.closest("[data-project-id]")?.dataset.projectId;
-    if (!id || id === this.#selectedProjectId) return;
-    this.#selectedProjectId = id;
-    this.#editingOverview   = false;
-    this.#editingNoteId     = null;
-    this.render({ parts: ["content"] });
-  }
-
-  static #onEditOverview(_event, _target) {
-    if (!this.#selectedProjectId) return;
-    this.#editingOverview = true;
-    this.render({ parts: ["content"] });
-  }
-
-  static async #onSaveOverview(_event, _target) {
-    if (!this.#selectedProjectId) return;
-    const textarea    = this.element.querySelector(".project-overview-textarea");
-    const description = textarea?.value ?? "";
-    await ProjectStore.update(this.#selectedProjectId, { description });
-    this.#editingOverview = false;
-    this.render({ parts: ["content"] });
-  }
-
-  static #onCancelOverview(_event, _target) {
-    this.#editingOverview = false;
-    this.render({ parts: ["content"] });
-  }
-
-  static async #onSaveInlineNote(_event, _target) {
-    if (!this.#selectedProjectId) return;
-
-    const textarea    = this.element.querySelector(".note-draft-textarea");
-    const customInput = this.element.querySelector('input[name="note_custom"]');
-    const presetEl    = this.element.querySelector('input[name="note_preset"]:checked');
-
-    const text = textarea?.value.trim();
-    if (!text) return;
-
-    const delta = customInput?.value !== ""
-      ? Number(customInput.value) || 0
-      : presetEl ? Number(presetEl.value) : 0;
-
-    if (this.#editingNoteId) {
-      await ProjectStore.editNote(this.#selectedProjectId, this.#editingNoteId, text, delta);
-      this.#editingNoteId = null;
-    } else {
-      await ProjectStore.addNote(this.#selectedProjectId, text, delta);
-      const projectName = ProjectStore.getAll()[this.#selectedProjectId]?.name ?? "Objective";
-      const progressStr = delta ? ` (${delta > 0 ? "+" : ""}${delta}%)` : "";
-      await this.#logEvent("objective", `Progress note on "${projectName}"${progressStr}: ${text}`, "scmProgressNote");
-    }
-
-    this.render({ parts: ["content"] });
-  }
-
-  static async #onFinishProject(_event, _target) {
-    if (!this.#selectedProjectId) return;
-    const projectName = ProjectStore.getAll()[this.#selectedProjectId]?.name ?? "Objective";
-    await ProjectStore.update(this.#selectedProjectId, { status: "finished" });
-    await this.#logEvent("objective", `Objective completed: ${projectName}`, "scmObjectiveFinished");
-    this.render({ parts: ["content"] });
-  }
-
-  static async #onReactivateProject(_event, _target) {
-    if (!this.#selectedProjectId) return;
-    const projectName = ProjectStore.getAll()[this.#selectedProjectId]?.name ?? "Objective";
-    await ProjectStore.update(this.#selectedProjectId, { status: "active" });
-    await this.#logEvent("objective", `Objective reactivated: ${projectName}`, "scmObjectiveFinished");
-    this.render({ parts: ["content"] });
-  }
-
-  static async #onDeleteProject(_event, _target) {
-    if (!this.#selectedProjectId) return;
-    const project = ProjectStore.getAll()[this.#selectedProjectId];
-    if (!project) return;
-
-    const confirmed = await foundry.applications.api.DialogV2.confirm({
-      window: { title: "Delete Objective" },
-      content: `<p>Delete <strong>${project.name}</strong> and all its notes? This cannot be undone.</p>`
-    });
-    if (!confirmed) return;
-
-    await ProjectStore.delete(this.#selectedProjectId);
-    this.#selectedProjectId = null;
-    this.render({ parts: ["content"] });
-  }
-
-  static #onEditNote(_event, target) {
-    if (!this.#selectedProjectId) return;
-    const noteId = target.closest("[data-note-id]")?.dataset.noteId;
-    if (!noteId) return;
-    this.#editingNoteId = noteId;
-    this.render({ parts: ["content"] });
-  }
-
-  static #onCancelNoteEdit(_event, _target) {
-    this.#editingNoteId = null;
-    this.render({ parts: ["content"] });
-  }
-
-  static async #onDeleteNote(_event, target) {
-    if (!this.#selectedProjectId) return;
-    const noteId = target.closest("[data-note-id]")?.dataset.noteId;
-    if (!noteId) return;
-
-    const confirmed = await foundry.applications.api.DialogV2.confirm({
-      window: { title: "Delete Note" },
-      content: "<p>Delete this note? Progress will be recalculated.</p>"
-    });
-    if (!confirmed) return;
-
-    await ProjectStore.deleteNote(this.#selectedProjectId, noteId);
-    this.render({ parts: ["content"] });
-  }
-
-  static async #onOpenConnection(_event, target) {
-    const factionId = target.dataset.targetFactionId;
-    const uuid      = target.dataset.documentUuid;
-    if (factionId) {
-      PartyDetailApp.show(factionId);
-    } else if (uuid) {
-      const doc = await fromUuid(uuid);
-      doc?.sheet?.render({ force: true });
-    }
-  }
-
-  static async #onDeleteConnection(_event, target) {
-    const edgeId = target.closest("[data-edge-id]")?.dataset.edgeId;
-    if (!edgeId) return;
-
-    const confirmed = await foundry.applications.api.DialogV2.confirm({
-      window: { title: "Remove Connection" },
-      content: "<p>Remove this connection? This cannot be undone.</p>"
-    });
-    if (!confirmed) return;
-
-    await RelationshipStore.deleteEdge(edgeId);
-    this.render({ parts: ["content"] });
-  }
-
-  // ─── Add Connection Panel ─────────────────────────────────────────────────────
-
-  static #onAddConnection(_event, target) {
-    this.#closeConnPanel();
-    if (!this.#selectedFactionId) return;
-
-    const fromFactionId = this.#selectedFactionId;
-
-    const panel = document.createElement("div");
-    panel.className = "mm-search-panel ddf-conn-panel";
-    positionPanelBesideApp(panel, this.element, target, 260);
-
-    panel.innerHTML = `
-      <div class="mm-panel-title">Add Connection</div>
-      <div class="mm-panel-options">
-        <button class="mm-option" data-mode="faction">
-          <i class="fa-solid fa-shield-halved"></i> Faction
-        </button>
-        <button class="mm-option" data-mode="document">
-          <i class="fa-solid fa-file"></i> Document
-        </button>
-      </div>
-    `;
-
-    panel.querySelector('[data-mode="faction"]').addEventListener("click",   () => this.#showConnFactionSearch(panel, fromFactionId));
-    panel.querySelector('[data-mode="document"]').addEventListener("click",  () => this.#showConnDocumentSearch(panel, fromFactionId));
-
-    // Attach to body so it can appear outside the faction window bounds
-    document.body.appendChild(panel);
-    bindPanelDismiss(panel);
-  }
-
-  #showConnFactionSearch(panel, fromFactionId) {
-    const allFactions  = FactionStore.getAll();
-    const liveEdges    = RelationshipStore.getEdgesForFaction(fromFactionId);
-    const connectedIds = new Set(
-      liveEdges.filter(e => e.type === "faction")
-               .map(e => e._reversed ? e.fromFactionId : e.toFactionId)
-    );
-    connectedIds.add(fromFactionId);
-    // Also exclude factions already linked via parent/child hierarchy
-    const faction = allFactions[fromFactionId];
-    if (faction?.parentId) connectedIds.add(faction.parentId);
-    Object.values(allFactions).filter(f => f.parentId === fromFactionId).forEach(f => connectedIds.add(f.id));
-
-    const candidates = Object.values(allFactions).filter(f => !connectedIds.has(f.id));
-
-    panel.innerHTML = `
-      <div class="mm-panel-title">Link Faction</div>
-      <input type="text" class="mm-search-input" placeholder="Filter factions…" autofocus />
-      <div class="mm-search-results ddf-conn-faction-list">
-        ${candidates.length
-          ? candidates.map(f => `
-              <div class="mm-search-result" data-id="${f.id}">
-                <i class="fa-solid fa-link ddf-link-icon"></i>
-                <span>${foundry.utils.escapeHTML(f.name)}</span>
-              </div>`).join("")
-          : "<div class='mm-search-empty'>No factions available</div>"
-        }
-      </div>
-      ${connectionTypePickerHTML()}
-      ${connectionDirectionPickerHTML()}
-      <div class="mm-panel-actions"><button class="mm-btn-cancel">Cancel</button></div>
-    `;
-
-    const input   = panel.querySelector(".mm-search-input");
-    const results = panel.querySelector(".mm-search-results");
-
-    input.addEventListener("input", () => {
-      const q = input.value.toLowerCase();
-      results.querySelectorAll(".mm-search-result").forEach(el => {
-        el.style.display = el.textContent.toLowerCase().includes(q) ? "" : "none";
-      });
-    });
-
-    results.addEventListener("click", async (e) => {
-      const el = e.target.closest(".mm-search-result");
-      if (!el) return;
-      const toFactionId      = el.dataset.id;
-      const direction        = readSelectedDirection(panel);
-      const connectionTypeId = readSelectedType(panel);
-      const opts             = { toFactionId };
-      if (connectionTypeId) opts.connectionTypeId = connectionTypeId;
-      await RelationshipStore.createEdge(fromFactionId, "faction", direction, opts);
-      const fromName   = FactionStore.getAll()[fromFactionId]?.name ?? "Faction";
-      const toName     = FactionStore.getAll()[toFactionId]?.name   ?? "Faction";
-      const typeName   = connectionTypeId
-        ? (getConnectionTypes().find(t => t.id === connectionTypeId)?.name ?? "")
-        : "";
-      const dirArrow   = direction === "two-way" ? "↔" : "→";
-      await this.#logEvent("connection",
-        `Connection established: ${fromName} ${dirArrow} ${toName}${typeName ? ` (${typeName})` : ""}`,
-        "scmConnectionEstablished");
-      this.#closeConnPanel();
-      this.render({ parts: ["content"] });
-    });
-
-    panel.querySelector(".mm-btn-cancel").addEventListener("click", () => this.#closeConnPanel());
-    input.focus();
-  }
-
-  #showConnDocumentSearch(panel, fromFactionId) {
-    const collections = [
-      { type: "Actor",        icon: "fa-user",     col: game.actors  },
-      { type: "JournalEntry", icon: "fa-book",     col: game.journal },
-      { type: "Item",         icon: "fa-suitcase", col: game.items   },
-      { type: "Scene",        icon: "fa-map",      col: game.scenes  }
-    ];
-
-    const docs = [];
-    for (const { type, icon, col } of collections) {
-      for (const doc of col) docs.push({ uuid: doc.uuid, name: doc.name, type, icon });
-    }
-
-    panel.innerHTML = `
-      <div class="mm-panel-title">Link Document</div>
-      <input type="text" class="mm-search-input" placeholder="Filter documents…" autofocus />
-      <div class="mm-search-results">
-        ${docs.length
-          ? docs.map(d => `
-            <div class="mm-search-result" data-uuid="${d.uuid}" data-type="${d.type}" data-name="${foundry.utils.escapeHTML(d.name)}">
-              <i class="fa-solid ${d.icon}"></i> ${foundry.utils.escapeHTML(d.name)}
-              <span class="mm-result-type">${d.type}</span>
-            </div>`).join("")
-          : "<div class='mm-search-empty'>No documents found</div>"
-        }
-      </div>
-      ${connectionTypePickerHTML()}
-      ${connectionDirectionPickerHTML()}
-      <div class="mm-panel-actions"><button class="mm-btn-cancel">Cancel</button></div>
-    `;
-
-    const input   = panel.querySelector(".mm-search-input");
-    const results = panel.querySelector(".mm-search-results");
-
-    input.addEventListener("input", () => {
-      const q = input.value.toLowerCase();
-      results.querySelectorAll(".mm-search-result").forEach(el => {
-        el.style.display = el.dataset.name.toLowerCase().includes(q) ? "" : "none";
-      });
-    });
-
-    results.addEventListener("click", async (e) => {
-      const el = e.target.closest(".mm-search-result");
-      if (!el) return;
-      const direction        = readSelectedDirection(panel);
-      const connectionTypeId = readSelectedType(panel);
-      const opts = { documentUuid: el.dataset.uuid, documentType: el.dataset.type, documentName: el.dataset.name };
-      if (connectionTypeId) opts.connectionTypeId = connectionTypeId;
-      await RelationshipStore.createEdge(fromFactionId, "document", direction, opts);
-      const typeName = connectionTypeId
-        ? (getConnectionTypes().find(t => t.id === connectionTypeId)?.name ?? "")
-        : "";
-      const dirArrow = direction === "two-way" ? "↔" : "→";
-      await this.#logEvent("connection",
-        `Document linked: ${el.dataset.name} ${dirArrow}${typeName ? ` (${typeName})` : ""}`,
-        "scmConnectionEstablished");
-      this.#closeConnPanel();
-      this.render({ parts: ["content"] });
-    });
-
-    panel.querySelector(".mm-btn-cancel").addEventListener("click", () => this.#closeConnPanel());
-    input.focus();
-  }
-
-  #closeConnPanel() {
-    document.querySelectorAll(".ddf-conn-panel").forEach(el => el.remove());
-  }
-
   // ─── Member / Retainer Actions ───────────────────────────────────────────────
 
   /** Add a player-driven party member — actor link required. */
   static #onAddMember(_event, target) {
-    if (!this.#selectedFactionId) return;
+    if (!this._selectedFactionId) return;
     this.#showActorPicker(target, "Add Party Member", async (actor) => {
       const person = {
         id:        foundry.utils.randomID(),
@@ -1124,15 +623,15 @@ export class PartyDetailApp extends HandlebarsApplicationMixin(ApplicationV2) {
       await this.#appendPerson("member", person);
       this.#selectedPersonId   = person.id;
       this.#selectedPersonKind = "member";
-      await this.#logEvent("member", `Party member added: ${person.name}`, "scmMemberAdded");
+      await this._logEvent("member", `Party member added: ${person.name}`, "scmMemberAdded");
       this.render({ parts: ["content"] });
     });
   }
 
   /** Add a retainer/hireling — name only at create-time; actor optional later. */
   static async #onAddRetainer(_event, _target) {
-    if (!this.#selectedFactionId) return;
-    const name = await PartyDetailApp.#promptName("New Retainer", "Name");
+    if (!this._selectedFactionId) return;
+    const name = await promptName("New Retainer", "Name");
     if (!name) return;
     const person = {
       id:        foundry.utils.randomID(),
@@ -1145,7 +644,7 @@ export class PartyDetailApp extends HandlebarsApplicationMixin(ApplicationV2) {
     await this.#appendPerson("retainer", person);
     this.#selectedPersonId   = person.id;
     this.#selectedPersonKind = "retainer";
-    await this.#logEvent("member", `Retainer added: ${person.name}`, "scmMemberAdded");
+    await this._logEvent("member", `Retainer added: ${person.name}`, "scmMemberAdded");
     this.render({ parts: ["content"] });
   }
 
@@ -1173,7 +672,7 @@ export class PartyDetailApp extends HandlebarsApplicationMixin(ApplicationV2) {
     });
     if (!confirmed) return;
 
-    await this.#logEvent("member", `${label.charAt(0).toUpperCase() + label.slice(1)} removed: ${person.name}`, "scmMemberRemoved");
+    await this._logEvent("member", `${label.charAt(0).toUpperCase() + label.slice(1)} removed: ${person.name}`, "scmMemberRemoved");
     await this.#removePerson(this.#selectedPersonKind, this.#selectedPersonId);
     this.#selectedPersonId   = null;
     this.#selectedPersonKind = null;
@@ -1233,7 +732,7 @@ export class PartyDetailApp extends HandlebarsApplicationMixin(ApplicationV2) {
     const note = { id: foundry.utils.randomID(), timestamp: Date.now(), text };
     const notes = [...(person.notes ?? []), note];
     await this.#updatePerson(this.#selectedPersonKind, this.#selectedPersonId, { notes });
-    await this.#logEvent("member", `${person.name}: ${text}`, null);
+    await this._logEvent("member", `${person.name}: ${text}`, null);
     this.render({ parts: ["content"] });
   }
 
@@ -1323,9 +822,9 @@ export class PartyDetailApp extends HandlebarsApplicationMixin(ApplicationV2) {
     document.querySelectorAll(".ddf-rep-faction-panel").forEach(el => el.remove());
 
     const allFactions = FactionStore.getAll();
-    const repData     = ReputationStore.getForParty(this.#selectedFactionId);
+    const repData     = ReputationStore.getForParty(this._selectedFactionId);
     const trackedIds  = new Set(Object.keys(repData));
-    trackedIds.add(this.#selectedFactionId); // exclude the party itself
+    trackedIds.add(this._selectedFactionId); // exclude the party itself
 
     const candidates = Object.values(allFactions)
       .filter(f => !trackedIds.has(f.id) && f.kind !== "party")
@@ -1371,7 +870,7 @@ export class PartyDetailApp extends HandlebarsApplicationMixin(ApplicationV2) {
       const el = e.target.closest(".mm-search-result");
       if (!el) return;
       panel.remove();
-      await ReputationStore.addFaction(this.#selectedFactionId, el.dataset.id);
+      await ReputationStore.addFaction(this._selectedFactionId, el.dataset.id);
       this.#selectedRepFactionId = el.dataset.id;
       this.render({ parts: ["content"] });
     });

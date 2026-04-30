@@ -17,7 +17,14 @@
     "scripts/module.js"
   ],
   "styles": [
-    "styles/faction-manager.css"
+    "styles/sidebar.css",
+    "styles/faction-detail.css",
+    "styles/relationships.css",
+    "styles/settings.css",
+    "styles/sidebar-folders.css",
+    "styles/detail-extras.css",
+    "styles/party-detail.css",
+    "styles/reputation.css"
   ],
   "flags": {},
   "description": "<p>Create and manage factions, sub-factions, and the relationships between them. Factions are linked to Journal Entries and displayed in a dedicated manager interface accessible from the Journal sidebar.</p>",

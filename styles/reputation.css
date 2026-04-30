@@ -1,0 +1,319 @@
+/* ══════════════════════════════════════════════════════════════════
+   REPUTATION TAB  (party-detail.hbs + ReputationLogApp)
+   ══════════════════════════════════════════════════════════════════ */
+
+.ddf-rep-layout {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ── List pane (left) ── */
+.ddf-rep-list-pane {
+  border-right: 1px solid var(--color-border-light-primary);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.ddf-rep-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  font-size: 0.72rem;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.65;
+  border-bottom: 1px solid var(--color-border-light-primary);
+  flex-shrink: 0;
+}
+
+.ddf-rep-faction-row {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+  padding: 5px 8px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--color-border-light-primary, rgba(255,255,255,0.06));
+}
+
+.ddf-rep-faction-row:hover {
+  background: var(--color-hover-bg, rgba(255, 255, 255, 0.04));
+}
+
+.ddf-rep-faction-row.selected {
+  background: color-mix(in srgb, var(--color-highlight, #5b9bd5) 18%, transparent);
+}
+
+.ddf-rep-faction-name {
+  font-size: 0.83rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ddf-rep-row-track {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ddf-rep-mini-track {
+  display: flex;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.ddf-rep-mini-track .ddf-rep-track-box {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  flex-shrink: 1;
+}
+
+.ddf-rep-mini-value {
+  font-size: 0.7rem;
+  opacity: 0.55;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.ddf-rep-empty {
+  padding: 10px 8px;
+  font-size: 0.8rem;
+  opacity: 0.55;
+  font-style: italic;
+}
+
+/* ── Track boxes (mini + large) ── */
+.ddf-rep-track-box {
+  width: 10px;
+  height: 7px;
+  border: 1px solid var(--color-border-light-primary);
+  border-radius: 2px;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.1s, border-color 0.1s;
+}
+
+/* filled color comes from inline hsl() style; this ensures border fallback */
+.ddf-rep-track-box.filled {
+  border-color: currentColor;
+}
+
+.ddf-rep-track-box.large {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  height: 16px;
+  border-radius: 3px;
+  flex-shrink: 1;
+}
+
+/* ── Detail pane (right) ── */
+.ddf-rep-detail-pane {
+  padding: 10px 14px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ddf-rep-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ddf-rep-detail-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: bold;
+}
+
+.ddf-rep-full-track {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 3px;
+  width: 100%;
+}
+
+.ddf-rep-value-display {
+  font-size: 1.1rem;
+  font-weight: bold;
+  text-align: center;
+}
+
+.ddf-rep-quick-row {
+  display: flex;
+  gap: 8px;
+}
+
+.ddf-rep-record-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.ddf-rep-delta-input {
+  width: 4rem;
+  flex-shrink: 0;
+}
+
+.ddf-rep-note-input {
+  flex: 1;
+}
+
+.ddf-rep-max-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+}
+
+.ddf-rep-max-input {
+  width: 4rem;
+}
+
+.ddf-rep-max-hint {
+  opacity: 0.5;
+}
+
+.ddf-rep-recent-header {
+  font-size: 0.75rem;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.6;
+  margin-top: 4px;
+  border-top: 1px solid var(--color-border-light-primary);
+  padding-top: 6px;
+}
+
+/* ── Reputation entries ── */
+.ddf-rep-entry {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 0.82rem;
+  padding: 2px 0;
+}
+
+.ddf-rep-entry-delta {
+  width: 2.5rem;
+  text-align: right;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.ddf-rep-entry-delta.positive { color: var(--color-level-success, #4a9f4a); }
+.ddf-rep-entry-delta.negative { color: var(--color-level-error, #c0392b); }
+
+.ddf-rep-entry-note {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ddf-rep-entry-time {
+  opacity: 0.45;
+  font-size: 0.73rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.ddf-rep-view-log {
+  align-self: flex-start;
+  margin-top: 4px;
+}
+
+/* ── ReputationLogApp dialog ── */
+.ddf-rep-log-app .window-content {
+  padding: 0;
+  overflow: hidden;
+}
+
+.ddf-rep-log {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 10px 14px;
+  gap: 8px;
+  box-sizing: border-box;
+}
+
+.ddf-rep-log-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: bold;
+  border-bottom: 1px solid var(--color-border-light-primary);
+  padding-bottom: 6px;
+  flex-shrink: 0;
+}
+
+.ddf-rep-log-current {
+  font-size: 0.82rem;
+  opacity: 0.7;
+  font-weight: normal;
+}
+
+.ddf-rep-log-entries {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ddf-rep-log-entry {
+  display: flex;
+  gap: 10px;
+  font-size: 0.82rem;
+  align-items: baseline;
+  padding: 2px 0;
+  border-bottom: 1px solid var(--color-border-light-primary);
+}
+
+.ddf-rep-log-delta {
+  width: 2.5rem;
+  text-align: right;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.ddf-rep-log-delta.positive { color: var(--color-level-success, #4a9f4a); }
+.ddf-rep-log-delta.negative { color: var(--color-level-error, #c0392b); }
+.ddf-rep-log-delta.neutral  { opacity: 0.5; }
+
+.ddf-rep-log-note {
+  flex: 1;
+}
+
+.ddf-rep-log-time {
+  opacity: 0.45;
+  font-size: 0.73rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.ddf-rep-log-empty {
+  opacity: 0.5;
+  font-style: italic;
+  padding: 8px 0;
+}
+
+.ddf-rep-log-actions {
+  border-top: 1px solid var(--color-border-light-primary);
+  padding-top: 8px;
+  flex-shrink: 0;
+}

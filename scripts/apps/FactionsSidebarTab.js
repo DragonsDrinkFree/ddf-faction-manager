@@ -13,6 +13,7 @@ import {
   importSandboxParty,
   syncAllSandboxPartyMembers
 } from "../utils/SandboxIntegration.js";
+import { promptName } from "../utils/AppHelpers.js";
 
 const { HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -221,10 +222,7 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
         const parentId = btn.closest("[data-faction-id]")?.dataset.factionId;
         if (!parentId) return;
         const parentName = FactionStore.getAll()[parentId]?.name ?? "faction";
-        const name = await this.#promptName(
-          `New Sub-Faction (${parentName})`,
-          "Name"
-        );
+        const name = await promptName(`New Sub-Faction (${parentName})`, "Name");
         if (!name) return;
         await FactionStore.create(name, parentId);
         this.render();
@@ -314,7 +312,7 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
         const folderId = btn.closest(".ddf-folder-section[data-folder-id]")?.dataset.folderId;
         if (!folderId) return;
         const folderName = FolderStore.getFolders()[folderId]?.name ?? "folder";
-        const name = await this.#promptName(`New Faction in ${folderName}`, "Name");
+        const name = await promptName(`New Faction in ${folderName}`, "Name");
         if (!name) return;
         const faction = await FactionStore.create(name, null);
         await FolderStore.setFactionFolder(faction.id, folderId);
@@ -329,7 +327,7 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
         const folderId = btn.closest(".ddf-folder-section[data-folder-id]")?.dataset.folderId;
         if (!folderId) return;
         const folderName = FolderStore.getFolders()[folderId]?.name ?? "folder";
-        const name = await this.#promptName(`New Sub-folder in "${folderName}"`, "Name");
+        const name = await promptName(`New Sub-folder in "${folderName}"`, "Name");
         if (!name) return;
         await FolderStore.createFolder(name, { parentFolderId: folderId });
         this.render();
@@ -607,28 +605,6 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
   }
 
   // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-  #promptName(title, label) {
-    return new Promise(resolve => {
-      foundry.applications.api.DialogV2.prompt({
-        window: { title },
-        content: `
-          <div class="standard-form">
-            <div class="form-group">
-              <label>${label}</label>
-              <div class="form-fields">
-                <input type="text" name="name" autofocus placeholder="${label}…" />
-              </div>
-            </div>
-          </div>`,
-        ok: {
-          label: "Create",
-          callback: (_event, button) => resolve(button.form.elements.name.value.trim() || null)
-        },
-        rejectClose: false
-      }).catch(() => resolve(null));
-    });
-  }
 
   #promptCreateOrganization() {
     return new Promise(resolve => {

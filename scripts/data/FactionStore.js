@@ -26,12 +26,25 @@ export class FactionStore {
       type: Object,
       default: {}
     });
+
+    // One-time migration: backfill the `kind` discriminator on legacy records
+    // (parties were added after factions, so older records have no kind field).
+    Hooks.once("ready", async () => {
+      if (!game.user.isGM) return;
+      const raw = game.settings.get(MODULE_ID, SETTING_KEY) ?? {};
+      let dirty = false;
+      for (const f of Object.values(raw)) {
+        if (!f.kind) { f.kind = "faction"; dirty = true; }
+      }
+      if (dirty) await game.settings.set(MODULE_ID, SETTING_KEY, raw);
+    });
   }
 
   static getAll() {
     const raw = game.settings.get(MODULE_ID, SETTING_KEY) ?? {};
-    // Backfill discriminator for legacy records — parties were introduced later
-    for (const f of Object.values(raw)) if (!f.kind) f.kind = "faction";
+    // Defensive read-side fallback for non-GM clients (the GM-only ready-hook
+    // migration won't have persisted the `kind` field yet on their world copy).
+    for (const f of Object.values(raw)) f.kind ??= "faction";
     return raw;
   }
 

@@ -1,0 +1,206 @@
+/* ═══════════════════════════════════════════════════════════════════
+   SIDEBAR — CONTROLS ROW (search + sort toggle)
+   ═══════════════════════════════════════════════════════════════════ */
+
+#ddfFactions .ddf-sidebar-controls {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+#ddfFactions .ddf-sidebar-controls .ddf-faction-search {
+  flex: 1;
+  box-sizing: border-box;
+}
+
+#ddfFactions .ddf-sort-toggle {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  font-size: 0.85rem;
+  opacity: 0.7;
+  transition: opacity 0.15s, background 0.1s;
+}
+
+#ddfFactions .ddf-sort-toggle:hover {
+  opacity: 1;
+  background: var(--color-hover-bg);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   SIDEBAR — FOLDER SECTIONS  (matches native Foundry li.folder style)
+   ═══════════════════════════════════════════════════════════════════ */
+
+#ddfFactions .ddf-folder-section {
+  --folder-padding: 6px;
+  --ddf-folder-bg: var(--color-dark-1, #111);
+  border-top: 1px solid var(--color-dark-1, #111);
+}
+
+/* Folder header — mirrors li.folder > .folder-header from foundry2.css */
+#ddfFactions .ddf-folder-header {
+  color: var(--color-light-2, #efe6d8);
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: var(--folder-padding, 6px);
+  line-height: var(--sidebar-folder-height, 24px);
+  /* background-color set via inline style when color present; falls back here */
+  background: var(--color-dark-1, #111);
+  text-shadow: 0 0 3px var(--color-dark-1, #111);
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  cursor: pointer;
+  user-select: none;
+}
+
+/* Folder icon — matches li.folder > .folder-header > i */
+#ddfFactions .ddf-folder-header > i.fa-fw {
+  margin-right: 10px;
+  flex-shrink: 0;
+}
+
+/* Collapsed: switch folder-open icon to folder-closed, matching Foundry */
+#ddfFactions .ddf-folder-section:not(.expanded) .ddf-folder-header > i::before {
+  content: "\f07b"; /* fa-folder (closed) */
+}
+
+/* Folder name — matches li.folder > .folder-header .folder-name */
+#ddfFactions .ddf-folder-name {
+  flex: 1;
+  font-size: var(--font-size-16, 1rem);
+  line-height: var(--sidebar-folder-height, 24px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Control buttons — styled like native Foundry .create-button */
+#ddfFactions .ddf-folder-controls {
+  display: none;
+  align-items: center;
+  gap: 0;
+  flex-shrink: 0;
+}
+
+#ddfFactions .ddf-folder-header:hover .ddf-folder-controls {
+  display: flex;
+}
+
+#ddfFactions .ddf-folder-btn {
+  --button-text-color: var(--color-light-2, #efe6d8);
+  --button-border-color: transparent;
+  --button-background-color: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--sidebar-folder-height, 24px);
+  width: 20px;
+  margin: 0 0 0 3px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  color: var(--color-light-2, #efe6d8);
+  text-shadow: inherit;
+  opacity: 0.85;
+}
+
+#ddfFactions .ddf-folder-btn:hover {
+  opacity: 1;
+  text-shadow: 0 0 6px var(--color-shadow-primary);
+}
+
+/* Body wrapper: holds the faction list + child folders; carries the colored left border */
+#ddfFactions .ddf-folder-body {
+  border-left: 6px solid var(--color-dark-1, #111);
+  /* border-left-color set via inline style when color present */
+}
+
+/* Nested folder sections sit inside .ddf-folder-body — no extra top separator */
+#ddfFactions .ddf-folder-body > .ddf-folder-section {
+  border-top: none;
+}
+
+/* Nested folder headers are not sticky (depth is unpredictable) */
+#ddfFactions .ddf-folder-body .ddf-folder-header {
+  position: relative;
+  top: auto;
+}
+
+/* Folder contents — the factions <ol> inside the body wrapper */
+#ddfFactions .ddf-folder-contents {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+#ddfFactions .ddf-unfiled-section {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  min-height: 4px;
+}
+
+/* Indent faction items within folders to align with the border */
+#ddfFactions .ddf-folder-contents .faction-item-row {
+  padding-left: 6px;
+}
+
+#ddfFactions .ddf-folder-empty {
+  padding: 4px 10px;
+  font-style: italic;
+  font-size: 0.82rem;
+  opacity: 0.5;
+  list-style: none;
+  color: var(--color-text-dark-secondary);
+}
+
+#ddfFactions .ddf-no-factions-hint {
+  padding: 8px 12px;
+  font-style: italic;
+  font-size: 0.85rem;
+  opacity: 0.6;
+  margin: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   SIDEBAR — DRAG & DROP (manual sort mode sections)
+   Only items that JS marks draggable="true" show the grab cursor.
+   ═══════════════════════════════════════════════════════════════════ */
+
+#ddfFactions .faction-item[draggable="true"] {
+  cursor: grab;
+}
+
+#ddfFactions .faction-item[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+#ddfFactions .faction-item.ddf-drag-source {
+  opacity: 0.35;
+}
+
+#ddfFactions .faction-item.ddf-drop-above {
+  box-shadow: inset 0 2px 0 0 var(--color-text-dark-primary);
+}
+
+#ddfFactions .faction-item.ddf-drop-below {
+  box-shadow: inset 0 -2px 0 0 var(--color-text-dark-primary);
+}
+
+#ddfFactions .ddf-folder-header.ddf-drag-over {
+  outline: 2px dashed var(--color-light-2, #efe6d8);
+  outline-offset: -2px;
+}
+
+#ddfFactions .ddf-unfiled-section.ddf-drag-over {
+  background: color-mix(in srgb, var(--color-bg-btn, #4b5ea8) 15%, transparent);
+  outline: 2px dashed var(--color-border-light-primary);
+  border-radius: 3px;
+  min-height: 32px;
+}
+
