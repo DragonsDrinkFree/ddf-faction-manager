@@ -176,10 +176,14 @@ Hooks.once("init", async () => {
     `modules/${MODULE_ID}/templates/partials/folder-section.hbs`
   ]);
 
-  // Register the recursive faction-item partial
+  // Register recursive partials (faction-item nests sub-factions; folder-section nests sub-folders)
   Handlebars.registerPartial(
     "ddf-faction-item",
     Handlebars.partials[`modules/${MODULE_ID}/templates/partials/faction-item.hbs`]
+  );
+  Handlebars.registerPartial(
+    "ddf-folder-section",
+    Handlebars.partials[`modules/${MODULE_ID}/templates/partials/folder-section.hbs`]
   );
 
   // Register helpers used in templates

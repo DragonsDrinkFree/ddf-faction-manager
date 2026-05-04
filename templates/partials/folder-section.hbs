@@ -12,32 +12,30 @@
       <a class="icon ddf-folder-btn" data-action="createFactionInFolder" title="Create faction in folder">
         <i class="fa-solid fa-plus"></i>
       </a>
-      <a class="icon ddf-folder-btn" data-action="createSubFolder" title="Create sub-folder">
-        <i class="fa-solid fa-folder-plus"></i>
-      </a>
+      {{#unless collapsed}}
+        <a class="icon ddf-folder-btn" data-action="createSubFolder" title="Create Folder">
+          <i class="fa-solid fa-folder-plus"></i>
+        </a>
+      {{/unless}}
       <a class="icon ddf-folder-btn" data-action="renameFolder" title="Edit folder">
         <i class="fa-solid fa-pen"></i>
-      </a>
-      <a class="icon ddf-folder-btn" data-action="deleteFolder" title="Delete folder">
-        <i class="fa-solid fa-trash"></i>
       </a>
     </div>
   </div>
 
   {{#unless collapsed}}
     <div class="ddf-folder-body"{{#if color}} style="border-left-color:{{color}};"{{/if}}>
-      <ol class="faction-items ddf-folder-contents" data-folder-id="{{id}}">
-        {{#each factions}}
-          {{> ddf-faction-item faction=this selectedId=../selectedId}}
-        {{else}}
-          {{#unless ../childFolders.length}}
-            <li class="faction-empty ddf-folder-empty">Empty folder.</li>
-          {{/unless}}
-        {{/each}}
-      </ol>
       {{#each childFolders}}
         {{> ddf-folder-section this selectedId=../selectedId}}
       {{/each}}
+      <ol class="faction-items ddf-folder-contents" data-folder-id="{{id}}">
+        {{#each factions}}
+          {{> ddf-faction-item faction=this selectedId=../selectedId}}
+        {{/each}}
+      </ol>
+      {{#unless factions.length}}{{#unless childFolders.length}}
+        <div class="faction-empty ddf-folder-empty">Empty folder.</div>
+      {{/unless}}{{/unless}}
     </div>
   {{/unless}}
 
