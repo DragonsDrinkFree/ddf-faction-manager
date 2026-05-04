@@ -35,10 +35,10 @@
   min-height: 56px;
   resize: vertical;
   padding: 6px 8px;
-  border: 1px solid var(--color-border-dark, #555);
+  border: 1px solid var(--color-border-dark, var(--color-border-light-primary));
   border-radius: 3px;
-  background: var(--color-bg-option, rgba(0, 0, 0, 0.15));
-  color: var(--color-text-dark-primary);
+  background: var(--color-bg-option, rgba(128, 128, 128, 0.08));
+  color: inherit;
   font-size: 0.85em;
   font-family: inherit;
 }
@@ -114,12 +114,12 @@
   border: 1px solid transparent;
   padding: 4px 6px;
   border-radius: 3px;
-  color: var(--color-text-dark-primary);
+  color: inherit;
 }
 .ddf-party-detail .party-member-detail-section .member-name-input:hover,
 .ddf-party-detail .party-member-detail-section .member-name-input:focus {
-  border-color: var(--color-border-dark, #555);
-  background: var(--color-bg-option, rgba(0, 0, 0, 0.2));
+  border-color: var(--color-border-dark, var(--color-border-light-primary));
+  background: var(--color-bg-option, rgba(128, 128, 128, 0.08));
   outline: none;
 }
 .ddf-party-detail .party-member-detail-section .member-detail-row {

@@ -48,7 +48,7 @@
 .ddf-faction-detail .ddf-tab-item.active {
   opacity: 1;
   font-weight: bold;
-  border-bottom-color: var(--color-text-dark-primary);
+  border-bottom-color: currentColor;
 }
 
 /* Tab sections */
@@ -137,7 +137,7 @@
 
 .ddf-faction-detail .faction-stat-input:focus {
   outline: none;
-  border-bottom-color: var(--color-text-dark-primary);
+  border-bottom-color: currentColor;
 }
 
 .ddf-faction-detail .faction-stat-input::placeholder {

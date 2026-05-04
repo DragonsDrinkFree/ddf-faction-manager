@@ -36,6 +36,7 @@
   list-style: none;
   margin: 0;
   padding: 4px 0;
+  color: var(--color-text-primary);
 }
 
 /* Reuse faction-item styles from FactionDetailApp below */
@@ -227,7 +228,7 @@
 .ddf-faction-manager .ddf-tab-item.active {
   opacity: 1;
   font-weight: bold;
-  border-bottom-color: var(--color-text-dark-primary);
+  border-bottom-color: currentColor;
 }
 
 /* ─── Tab Sections Container ─────────────────────────────────────── */
@@ -545,18 +546,18 @@
 
 .mm-node-label {
   font-size: 11px;
-  fill: var(--color-text-primary);
+  fill: var(--color-light-1, #f7f3e8);
   pointer-events: none;
 }
 
 .mm-node-icon {
-  fill: var(--color-text-dark-secondary);
+  fill: var(--color-light-3, #e7d1b1);
   pointer-events: none;
 }
 
 .mm-relation-label {
   font-size: 9px;
-  fill: var(--color-text-dark-secondary);
+  fill: var(--color-light-3, #e7d1b1);
   font-style: italic;
   pointer-events: none;
 }
@@ -1173,7 +1174,7 @@
 
 .ddf-faction-manager .note-controls a:hover {
   opacity: 1;
-  background: rgba(0, 0, 0, 0.1);
+  background: var(--color-hover-bg);
 }
 
 .ddf-faction-manager .note-text {
