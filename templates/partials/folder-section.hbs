@@ -9,16 +9,19 @@
     <i class="fa-solid fa-folder-open fa-fw"></i>
     <span class="ddf-folder-name" title="{{name}}">{{name}}</span>
     <div class="ddf-folder-controls">
-      <a class="icon ddf-folder-btn" data-action="createFactionInFolder" title="Create faction in folder">
-        <i class="fa-solid fa-plus"></i>
-      </a>
       {{#unless collapsed}}
         <a class="icon ddf-folder-btn" data-action="createSubFolder" title="Create Folder">
-          <i class="fa-solid fa-folder-plus"></i>
+          <span class="ddf-badge-icon">
+            <i class="fa-solid fa-folder"></i>
+            <i class="fa-solid fa-plus ddf-badge"></i>
+          </span>
         </a>
       {{/unless}}
-      <a class="icon ddf-folder-btn" data-action="renameFolder" title="Edit folder">
-        <i class="fa-solid fa-pen"></i>
+      <a class="icon ddf-folder-btn" data-action="createFactionInFolder" title="Create faction in folder">
+        <span class="ddf-badge-icon">
+          <i class="fa-solid fa-shield-halved"></i>
+          <i class="fa-solid fa-plus ddf-badge"></i>
+        </span>
       </a>
     </div>
   </div>

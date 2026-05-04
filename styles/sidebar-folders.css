@@ -102,16 +102,40 @@
   height: var(--sidebar-folder-height, 24px);
   width: 20px;
   margin: 0 0 0 3px;
-  font-size: 0.75rem;
+  font-size: 1rem;
   cursor: pointer;
   color: var(--color-light-2, #efe6d8);
   text-shadow: inherit;
   opacity: 0.85;
 }
 
+/* Folder creation button is larger, matching Foundry's .create-button.create-folder { font-size: 120% } */
+#ddfFactions .ddf-folder-btn[data-action="createSubFolder"] {
+  font-size: 120%;
+}
+
 #ddfFactions .ddf-folder-btn:hover {
   opacity: 1;
   text-shadow: 0 0 6px var(--color-shadow-primary);
+}
+
+/* Badge-style icon: main icon with a small + overlaid at the top-right corner */
+#ddfFactions .ddf-badge-icon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+#ddfFactions .ddf-badge-icon .ddf-badge {
+  position: absolute;
+  top: -3px;
+  right: -5px;
+  font-size: 0.55em;
+  font-weight: 900;
+  line-height: 1;
+  pointer-events: none;
 }
 
 /* Body wrapper: holds the faction list + child folders; carries the colored left border */
