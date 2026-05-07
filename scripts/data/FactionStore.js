@@ -26,10 +26,26 @@ export class FactionStore {
       type: Object,
       default: {}
     });
+
+    // One-time migration: backfill the `kind` discriminator on legacy records
+    // (parties were added after factions, so older records have no kind field).
+    Hooks.once("ready", async () => {
+      if (!game.user.isGM) return;
+      const raw = game.settings.get(MODULE_ID, SETTING_KEY) ?? {};
+      let dirty = false;
+      for (const f of Object.values(raw)) {
+        if (!f.kind) { f.kind = "faction"; dirty = true; }
+      }
+      if (dirty) await game.settings.set(MODULE_ID, SETTING_KEY, raw);
+    });
   }
 
   static getAll() {
-    return game.settings.get(MODULE_ID, SETTING_KEY) ?? {};
+    const raw = game.settings.get(MODULE_ID, SETTING_KEY) ?? {};
+    // Defensive read-side fallback for non-GM clients (the GM-only ready-hook
+    // migration won't have persisted the `kind` field yet on their world copy).
+    for (const f of Object.values(raw)) f.kind ??= "faction";
+    return raw;
   }
 
   static async _save(data) {
@@ -130,8 +146,11 @@ export class FactionStore {
    * @param {string|null} parentId
    * @returns {Promise<object>} the new faction data
    */
-  static async create(name, parentId = null) {
+  static async create(name, parentId = null, opts = {}) {
     const id      = foundry.utils.randomID();
+    const kind    = opts.kind === "party" ? "party" : "faction";
+    // Parties are top-level only — never inherit a parentId
+    const effectiveParent = kind === "party" ? null : parentId;
     const journal = await FactionStore.ensureFactionJournal();
 
     const pages = await journal.createEmbeddedDocuments("JournalEntryPage", [{
@@ -150,7 +169,15 @@ export class FactionStore {
       }
     } catch { /* leave stats empty */ }
 
-    const faction = { id, name, parentId, pageId: pages[0].id, stats, tags: [], secrets: [], rumors: [] };
+    const faction = {
+      id, name,
+      parentId: effectiveParent,
+      pageId: pages[0].id,
+      stats, tags: [], secrets: [], rumors: [],
+      kind,
+      sandboxPartyId: opts.sandboxPartyId ?? null,
+      color: opts.color ?? ""
+    };
     const all = this.getAll();
     all[id] = faction;
     await this._save(all);
@@ -167,6 +194,9 @@ export class FactionStore {
   static async update(id, updates) {
     const all = this.getAll();
     if (!all[id]) throw new Error(`Faction ${id} not found`);
+
+    // Parties are top-level only — silently drop attempts to give them a parent
+    if (all[id].kind === "party" && "parentId" in updates) delete updates.parentId;
 
     // Keep the journal page title in sync when the faction is renamed
     if (updates.name && updates.name !== all[id].name && all[id].pageId) {

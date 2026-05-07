@@ -1,25 +1,29 @@
-<li class="faction-item {{#if (eq faction.id ../selectedId)}}selected{{/if}}" data-faction-id="{{faction.id}}">
+<li class="faction-item {{#if (eq faction.id ../selectedId)}}selected{{/if}}{{#if faction.isParty}} is-party{{/if}}{{#if faction.isActiveParty}} is-active-party{{/if}}{{#if faction.childrenCollapsed}} children-collapsed{{/if}}" data-faction-id="{{faction.id}}">
   <div class="faction-item-row" data-action="selectFaction" data-faction-id="{{faction.id}}">
     {{#if faction.children.length}}
       <i class="fa-solid fa-chevron-right faction-collapse-icon"></i>
     {{else}}
       <span class="faction-collapse-spacer"></span>
     {{/if}}
+    {{#if faction.isParty}}
+      <i class="fa-solid fa-people-group faction-kind-icon"></i>
+    {{/if}}
     <span class="faction-name">{{faction.name}}</span>
     <div class="faction-item-controls">
-      <a class="icon" data-action="createSubFaction" data-faction-id="{{faction.id}}" title="Add Sub-Faction">
-        <i class="fa-solid fa-plus"></i>
-      </a>
-      <a class="icon" data-action="deleteFaction" data-faction-id="{{faction.id}}" title="Delete Faction">
-        <i class="fa-solid fa-trash"></i>
-      </a>
+      {{#unless faction.isParty}}
+        <a class="icon" data-action="createSubFaction" data-faction-id="{{faction.id}}" title="Add Sub-Faction">
+          <i class="fa-solid fa-plus"></i>
+        </a>
+      {{/unless}}
     </div>
   </div>
   {{#if faction.children.length}}
-    <ol class="faction-children">
-      {{#each faction.children}}
-        {{> ddf-faction-item faction=this selectedId=../selectedId}}
-      {{/each}}
-    </ol>
+    {{#unless faction.childrenCollapsed}}
+      <ol class="faction-children">
+        {{#each faction.children}}
+          {{> ddf-faction-item faction=this selectedId=../selectedId}}
+        {{/each}}
+      </ol>
+    {{/unless}}
   {{/if}}
 </li>

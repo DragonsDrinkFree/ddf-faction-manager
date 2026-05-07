@@ -4,8 +4,10 @@ import { RelationshipStore } from "./data/RelationshipStore.js";
 import { FolderStore } from "./data/FolderStore.js";
 import { MemberStore } from "./data/MemberStore.js";
 import { EventLogStore } from "./data/EventLogStore.js";
+import { ReputationStore } from "./data/ReputationStore.js";
 import { FactionsSidebarTab } from "./apps/FactionsSidebarTab.js";
 import { FactionDetailApp } from "./apps/FactionDetailApp.js";
+import { createListEditor } from "./utils/SettingsListEditor.js";
 
 const MODULE_ID = "ddf-faction-manager";
 
@@ -17,6 +19,7 @@ Hooks.once("init", async () => {
   FolderStore.register();
   MemberStore.register();
   EventLogStore.register();
+  ReputationStore.register();
 
   // ── Faction text enricher  (@Faction[id]{label}) ──────────────────────────────
   CONFIG.TextEditor.enrichers.push({
@@ -69,8 +72,7 @@ Hooks.once("init", async () => {
     default: JSON.stringify([
       { id: "influence",  name: "Influence",  default: 1 },
       { id: "wealth",     name: "Wealth",     default: 1 },
-      { id: "membership", name: "Membership", default: 1 },
-      { id: "location",   name: "Location",   default: 1 }
+      { id: "membership", name: "Membership", default: 1 }
     ])
   });
 
@@ -107,6 +109,21 @@ Hooks.once("init", async () => {
     ])
   });
 
+  game.settings.register(MODULE_ID, "currencyTypes", {
+    name: "Currency Types",
+    hint: "Currency denominations available for retainer weekly wages. The abbreviation (e.g. gp) appears in the dropdown.",
+    scope: "world",
+    config: true,
+    type: String,
+    default: JSON.stringify([
+      { id: "cp", name: "Copper Pieces" },
+      { id: "sp", name: "Silver Pieces" },
+      { id: "ep", name: "Electrum Pieces" },
+      { id: "gp", name: "Gold Pieces" },
+      { id: "pp", name: "Platinum Pieces" }
+    ])
+  });
+
   // ── Sandbox Campaign Manager Integration toggles ──────────────────────────────
   const scmSettings = [
     { key: "scmMemberAdded",              name: "Member: Added" },
@@ -130,7 +147,8 @@ Hooks.once("init", async () => {
   }
 
   // ── Sidebar tab ───────────────────────────────────────────────────────────────
-  Sidebar.TABS.ddfFactions = {
+  const SidebarClass = foundry.applications.sidebar.Sidebar;
+  SidebarClass.TABS.ddfFactions = {
     tooltip: "Factions",
     icon:    "fa-solid fa-shield-halved",
     gmOnly:  true
@@ -139,30 +157,39 @@ Hooks.once("init", async () => {
 
   // Reorder tabs so Factions appears between Journal and Roll Tables.
   // JS objects preserve insertion order, so we clear and re-insert all entries.
-  const tabSnapshot = { ...Sidebar.TABS };
-  for (const key of Object.keys(Sidebar.TABS)) delete Sidebar.TABS[key];
+  const tabSnapshot = { ...SidebarClass.TABS };
+  for (const key of Object.keys(SidebarClass.TABS)) delete SidebarClass.TABS[key];
   for (const [key, val] of Object.entries(tabSnapshot)) {
     if (key === "ddfFactions") continue;        // skip — we'll place it manually
-    Sidebar.TABS[key] = val;
-    if (key === "journal") Sidebar.TABS.ddfFactions = tabSnapshot.ddfFactions;
+    SidebarClass.TABS[key] = val;
+    if (key === "journal") SidebarClass.TABS.ddfFactions = tabSnapshot.ddfFactions;
   }
 
   // ── Templates ─────────────────────────────────────────────────────────────────
-  await loadTemplates([
+  await foundry.applications.handlebars.loadTemplates([
     `modules/${MODULE_ID}/templates/sidebar-tab.hbs`,
     `modules/${MODULE_ID}/templates/faction-detail.hbs`,
+    `modules/${MODULE_ID}/templates/party-detail.hbs`,
     `modules/${MODULE_ID}/templates/global-relationships.hbs`,
-    `modules/${MODULE_ID}/templates/partials/faction-item.hbs`
+    `modules/${MODULE_ID}/templates/party-reputation-log.hbs`,
+    `modules/${MODULE_ID}/templates/partials/faction-item.hbs`,
+    `modules/${MODULE_ID}/templates/partials/folder-section.hbs`
   ]);
 
-  // Register the recursive faction-item partial
+  // Register recursive partials (faction-item nests sub-factions; folder-section nests sub-folders)
   Handlebars.registerPartial(
     "ddf-faction-item",
     Handlebars.partials[`modules/${MODULE_ID}/templates/partials/faction-item.hbs`]
   );
+  Handlebars.registerPartial(
+    "ddf-folder-section",
+    Handlebars.partials[`modules/${MODULE_ID}/templates/partials/folder-section.hbs`]
+  );
 
   // Register helpers used in templates
   Handlebars.registerHelper("eq", (a, b) => a === b);
+  Handlebars.registerHelper("gt", (a, b) => a > b);
+  Handlebars.registerHelper("lt", (a, b) => a < b);
 
   console.log(`${MODULE_ID} | Initialized`);
 });
@@ -176,6 +203,42 @@ Hooks.once("ready", () => {
     event.preventDefault();
     event.stopPropagation();
     FactionDetailApp.show(link.dataset.factionId);
+  }, true);
+
+  // Re-render the faction sidebar tab whenever the user clicks/activates it.
+  // Forces a fresh sandbox-import check (in case SCM loaded after us) and
+  // refreshes active-party gold styling + sort order when the GM has switched
+  // active parties in SCM since the last render. Multiple trigger paths
+  // because V14 sidebar tab activation doesn't have one stable hook signature.
+  const refreshFactionTab = () => {
+    const tab = ui.sidebar?.tabs?.ddfFactions
+             ?? ui.sidebar?.tabs?.get?.("ddfFactions")
+             ?? ui?.ddfFactions
+             ?? null;
+    if (tab?.render) tab.render({ force: true });
+  };
+
+  // Trigger 1: documented changeSidebarTab hook (works in V12-V13, may differ in V14)
+  Hooks.on("changeSidebarTab", (arg) => {
+    const tabName = typeof arg === "string" ? arg : (arg?.tabName ?? arg?.id ?? null);
+    if (tabName === "ddfFactions") refreshFactionTab();
+  });
+
+  // Trigger 2: renderSidebar hook — fires when the sidebar redraws; check active tab
+  Hooks.on("renderSidebar", (sidebar) => {
+    const active = sidebar?.activeTab ?? sidebar?.tabName
+                ?? sidebar?.element?.querySelector?.('[data-tab].active')?.dataset?.tab;
+    if (active === "ddfFactions") refreshFactionTab();
+  });
+
+  // Trigger 3: direct DOM click on any nav element marked for our tab. Covers
+  // multiple V13/V14 button shapes — buttons, anchor tags, etc.
+  document.addEventListener("click", (event) => {
+    const btn = event.target.closest(
+      '[data-tab="ddfFactions"], [data-action="tab"][data-tab="ddfFactions"], [data-tab-id="ddfFactions"]'
+    );
+    if (!btn) return;
+    Promise.resolve().then(refreshFactionTab);
   }, true);
 });
 
@@ -217,216 +280,178 @@ Hooks.on("renderSettingsConfig", (_app, html) => {
   }
 
   // ── Stats: swap text input for a list editor ──────────────────────────────
-  // Guard: only replace the visible (non-hidden) input; avoid double-injection.
-  const statInput = root.querySelector(
-    `input[name="${MODULE_ID}.statDefinitions"]:not([type="hidden"])`
-  );
-  if (!statInput) return; // If the stat input isn't here, neither section applies
-
-  let currentDefs = [];
-  try {
-    const raw = game.settings.get(MODULE_ID, "statDefinitions");
-    currentDefs = typeof raw === "string" ? JSON.parse(raw) : (raw ?? []);
-  } catch { /* keep empty */ }
-
-  // Wrapper replaces the original <input>
-  const wrap = document.createElement("div");
-  wrap.className = "ddf-inline-stat-editor";
-
-  // Hidden input — Foundry's "Save Changes" reads this by name and persists it
-  const hidden  = document.createElement("input");
-  hidden.type   = "hidden";
-  hidden.name   = `${MODULE_ID}.statDefinitions`;
-  hidden.value  = JSON.stringify(currentDefs);
-  wrap.appendChild(hidden);
-
-  // Column header row
-  const header = document.createElement("div");
-  header.className = "ddf-stat-list-header";
-  header.innerHTML = `
-    <span class="ddf-stat-col-name">Name</span>
-    <span class="ddf-stat-col-default">Default</span>
-    <span class="ddf-stat-col-sizekey">Size</span>
-    <span></span>
-  `;
-  wrap.appendChild(header);
-
-  const list = document.createElement("div");
-  list.className = "ddf-stat-list";
-  wrap.appendChild(list);
-
-  /** Rebuild the hidden JSON from the current rows. */
-  const syncHidden = () => {
-    const defs = [];
-    list.querySelectorAll(".ddf-stat-row").forEach(row => {
+  createListEditor({
+    root,
+    settingKey:    "statDefinitions",
+    wrapperClass:  "ddf-inline-stat-editor",
+    listClass:     "ddf-stat-list",
+    addBtnClass:   "ddf-add-stat-btn",
+    addBtnLabel:   "Add Stat",
+    focusSelector: ".ddf-stat-name",
+    headerHTML: `
+      <div class="ddf-stat-list-header">
+        <span class="ddf-stat-col-name">Name</span>
+        <span class="ddf-stat-col-default">Default</span>
+        <span class="ddf-stat-col-sizekey">Size</span>
+        <span></span>
+      </div>`,
+    newRowData: () => ({ id: foundry.utils.randomID(), name: "", default: 0, sizeKey: false }),
+    readRow: (row) => {
       const id         = row.dataset.statId;
       const name       = row.querySelector(".ddf-stat-name")?.value.trim();
       const defaultRaw = parseFloat(row.querySelector(".ddf-stat-default")?.value);
-      const isSizeKey  = row.querySelector(".ddf-stat-sizekey")?.checked ?? false;
-      if (id && name) defs.push({
-        id,
-        name,
-        default:  isNaN(defaultRaw) ? 0 : defaultRaw,
-        sizeKey:  isSizeKey
-      });
-    });
-    hidden.value = JSON.stringify(defs);
-  };
+      const sizeKey    = row.querySelector(".ddf-stat-sizekey")?.checked ?? false;
+      if (!id || !name) return null;
+      return { id, name, default: isNaN(defaultRaw) ? 0 : defaultRaw, sizeKey };
+    },
+    buildRow: ({ id, name = "", default: defaultVal = 0, sizeKey = false }, sync) => {
+      const row = document.createElement("div");
+      row.className     = "ddf-stat-row";
+      row.dataset.statId = id;
 
-  /** Append a row to the stat list. */
-  const addRow = (id, name, defaultVal = 0, isSizeKey = false) => {
-    const row       = document.createElement("div");
-    row.className   = "ddf-stat-row";
-    row.dataset.statId = id;
+      const nameInput       = document.createElement("input");
+      nameInput.type        = "text";
+      nameInput.className   = "ddf-stat-name";
+      nameInput.value       = name;
+      nameInput.placeholder = "Stat name…";
+      nameInput.addEventListener("input", sync);
 
-    const nameInput       = document.createElement("input");
-    nameInput.type        = "text";
-    nameInput.className   = "ddf-stat-name";
-    nameInput.value       = name;
-    nameInput.placeholder = "Stat name…";
-    nameInput.addEventListener("input", syncHidden);
+      const defaultInput     = document.createElement("input");
+      defaultInput.type      = "number";
+      defaultInput.className = "ddf-stat-default";
+      defaultInput.value     = defaultVal;
+      defaultInput.min       = "0";
+      defaultInput.step      = "1";
+      defaultInput.addEventListener("input", sync);
 
-    const defaultInput         = document.createElement("input");
-    defaultInput.type          = "number";
-    defaultInput.className     = "ddf-stat-default";
-    defaultInput.value         = defaultVal;
-    defaultInput.min           = "0";
-    defaultInput.step          = "1";
-    defaultInput.addEventListener("input", syncHidden);
+      const sizekeyCell     = document.createElement("label");
+      sizekeyCell.className = "ddf-stat-sizekey-cell";
+      sizekeyCell.title     = "Use this stat for node size";
+      const sizekeyRadio     = document.createElement("input");
+      sizekeyRadio.type      = "radio";
+      sizekeyRadio.className = "ddf-stat-sizekey";
+      sizekeyRadio.name      = "stat_sizekey";
+      sizekeyRadio.checked   = sizeKey;
+      sizekeyRadio.addEventListener("change", sync);
+      sizekeyCell.appendChild(sizekeyRadio);
 
-    const sizekeyCell     = document.createElement("label");
-    sizekeyCell.className = "ddf-stat-sizekey-cell";
-    sizekeyCell.title     = "Use this stat for node size";
-    const sizekeyRadio    = document.createElement("input");
-    sizekeyRadio.type     = "radio";
-    sizekeyRadio.className = "ddf-stat-sizekey";
-    sizekeyRadio.name     = "stat_sizekey";
-    sizekeyRadio.checked  = isSizeKey;
-    sizekeyRadio.addEventListener("change", syncHidden);
-    sizekeyCell.appendChild(sizekeyRadio);
+      const delBtn     = document.createElement("button");
+      delBtn.type      = "button";
+      delBtn.className = "ddf-stat-delete icon";
+      delBtn.title     = "Remove stat";
+      delBtn.innerHTML = '<i class="fa-solid fa-trash"></i>';
+      delBtn.addEventListener("click", () => { row.remove(); sync(); });
 
-    const delBtn     = document.createElement("button");
-    delBtn.type      = "button";
-    delBtn.className = "ddf-stat-delete icon";
-    delBtn.title     = "Remove stat";
-    delBtn.innerHTML = '<i class="fa-solid fa-trash"></i>';
-    delBtn.addEventListener("click", () => { row.remove(); syncHidden(); });
-
-    row.appendChild(nameInput);
-    row.appendChild(defaultInput);
-    row.appendChild(sizekeyCell);
-    row.appendChild(delBtn);
-    list.appendChild(row);
-    return row;
-  };
-
-  for (const def of currentDefs) addRow(def.id, def.name, def.default ?? 0, def.sizeKey ?? false);
-
-  // ── Size key column visibility: show only when "Single Value" is selected ────
-  const sizeSelect = root.querySelector(`select[name="${MODULE_ID}.nodeSizeDetermination"]`);
-  if (sizeSelect) {
-    const updateSizeKeyVisibility = () => {
-      wrap.classList.toggle("ddf-sizekey-visible", sizeSelect.value === "single");
-    };
-    sizeSelect.addEventListener("change", updateSizeKeyVisibility);
-    updateSizeKeyVisibility();
-  }
-
-  const addBtn     = document.createElement("button");
-  addBtn.type      = "button";
-  addBtn.className = "ddf-add-stat-btn";
-  addBtn.innerHTML = '<i class="fa-solid fa-plus"></i> Add Stat';
-  addBtn.addEventListener("click", () => {
-    const row = addRow(foundry.utils.randomID(), "");
-    syncHidden();
-    row.querySelector(".ddf-stat-name")?.focus();
+      row.append(nameInput, defaultInput, sizekeyCell, delBtn);
+      return row;
+    },
+    onAttach: (wrap) => {
+      // Show the size-key column only when node sizing is "Single Value"
+      const sizeSelect = root.querySelector(`select[name="${MODULE_ID}.nodeSizeDetermination"]`);
+      if (!sizeSelect) return;
+      const update = () => wrap.classList.toggle("ddf-sizekey-visible", sizeSelect.value === "single");
+      sizeSelect.addEventListener("change", update);
+      update();
+    }
   });
-  wrap.appendChild(addBtn);
-
-  statInput.replaceWith(wrap);
 
   // ── Connection Types: swap text input for a list editor ───────────────────
-  const ctInput = root.querySelector(
-    `input[name="${MODULE_ID}.connectionTypes"]:not([type="hidden"])`
-  );
-  if (!ctInput) return;
-
-  let currentTypes = [];
-  try {
-    const raw = game.settings.get(MODULE_ID, "connectionTypes");
-    currentTypes = typeof raw === "string" ? JSON.parse(raw) : (raw ?? []);
-  } catch { /* keep empty */ }
-
-  const ctWrap = document.createElement("div");
-  ctWrap.className = "ddf-inline-conntype-editor";
-
-  const ctHidden  = document.createElement("input");
-  ctHidden.type   = "hidden";
-  ctHidden.name   = `${MODULE_ID}.connectionTypes`;
-  ctHidden.value  = JSON.stringify(currentTypes);
-  ctWrap.appendChild(ctHidden);
-
-  const ctList = document.createElement("div");
-  ctList.className = "ddf-conntype-list";
-  ctWrap.appendChild(ctList);
-
-  const syncCtHidden = () => {
-    const defs = [];
-    ctList.querySelectorAll(".ddf-conntype-row").forEach(row => {
+  createListEditor({
+    root,
+    settingKey:    "connectionTypes",
+    wrapperClass:  "ddf-inline-conntype-editor",
+    listClass:     "ddf-conntype-list",
+    addBtnClass:   "ddf-add-conntype-btn",
+    addBtnLabel:   "Add Type",
+    focusSelector: ".ddf-conntype-name",
+    newRowData: () => ({ id: foundry.utils.randomID(), name: "", color: "#888888" }),
+    readRow: (row) => {
       const id    = row.dataset.typeId;
       const name  = row.querySelector(".ddf-conntype-name")?.value.trim();
       const color = row.querySelector(".ddf-conntype-color")?.value ?? "#888888";
-      if (id && name) defs.push({ id, name, color });
-    });
-    ctHidden.value = JSON.stringify(defs);
-  };
+      if (!id || !name) return null;
+      return { id, name, color };
+    },
+    buildRow: ({ id, name = "", color = "#888888" }, sync) => {
+      const row = document.createElement("div");
+      row.className     = "ddf-conntype-row";
+      row.dataset.typeId = id;
 
-  const addTypeRow = (id, name, color = "#888888") => {
-    const row       = document.createElement("div");
-    row.className   = "ddf-conntype-row";
-    row.dataset.typeId = id;
+      const nameInput       = document.createElement("input");
+      nameInput.type        = "text";
+      nameInput.className   = "ddf-conntype-name";
+      nameInput.value       = name;
+      nameInput.placeholder = "Type name…";
+      nameInput.addEventListener("input", sync);
 
-    const nameInput       = document.createElement("input");
-    nameInput.type        = "text";
-    nameInput.className   = "ddf-conntype-name";
-    nameInput.value       = name;
-    nameInput.placeholder = "Type name…";
-    nameInput.addEventListener("input", syncCtHidden);
+      const colorInput     = document.createElement("input");
+      colorInput.type      = "color";
+      colorInput.className = "ddf-conntype-color";
+      colorInput.value     = color;
+      colorInput.addEventListener("input", sync);
 
-    const colorInput     = document.createElement("input");
-    colorInput.type      = "color";
-    colorInput.className = "ddf-conntype-color";
-    colorInput.value     = color;
-    colorInput.addEventListener("input", syncCtHidden);
+      const delBtn     = document.createElement("button");
+      delBtn.type      = "button";
+      delBtn.className = "ddf-conntype-delete icon";
+      delBtn.title     = "Remove type";
+      delBtn.innerHTML = '<i class="fa-solid fa-trash"></i>';
+      delBtn.addEventListener("click", () => { row.remove(); sync(); });
 
-    const delBtn     = document.createElement("button");
-    delBtn.type      = "button";
-    delBtn.className = "ddf-conntype-delete icon";
-    delBtn.title     = "Remove type";
-    delBtn.innerHTML = '<i class="fa-solid fa-trash"></i>';
-    delBtn.addEventListener("click", () => { row.remove(); syncCtHidden(); });
-
-    row.appendChild(nameInput);
-    row.appendChild(colorInput);
-    row.appendChild(delBtn);
-    ctList.appendChild(row);
-    return row;
-  };
-
-  for (const def of currentTypes) addTypeRow(def.id, def.name, def.color);
-
-  const addCtBtn     = document.createElement("button");
-  addCtBtn.type      = "button";
-  addCtBtn.className = "ddf-add-conntype-btn";
-  addCtBtn.innerHTML = '<i class="fa-solid fa-plus"></i> Add Type';
-  addCtBtn.addEventListener("click", () => {
-    const row = addTypeRow(foundry.utils.randomID(), "");
-    syncCtHidden();
-    row.querySelector(".ddf-conntype-name")?.focus();
+      row.append(nameInput, colorInput, delBtn);
+      return row;
+    }
   });
-  ctWrap.appendChild(addCtBtn);
 
-  ctInput.replaceWith(ctWrap);
+  // ── Currency Types: swap text input for a list editor ────────────────────
+  createListEditor({
+    root,
+    settingKey:    "currencyTypes",
+    wrapperClass:  "ddf-inline-currency-editor",
+    listClass:     "ddf-currency-list",
+    addBtnClass:   "ddf-add-currency-btn",
+    addBtnLabel:   "Add Currency",
+    focusSelector: ".ddf-currency-id",
+    headerHTML: `
+      <div class="ddf-currency-list-header">
+        <span>Abbrev.</span><span>Full Name</span><span></span>
+      </div>`,
+    newRowData: () => ({ id: "", name: "" }),
+    readRow: (row) => {
+      const id   = row.querySelector(".ddf-currency-id")?.value.trim();
+      const name = row.querySelector(".ddf-currency-name")?.value.trim();
+      if (!id) return null;
+      return { id, name: name || id };
+    },
+    buildRow: ({ id = "", name = "" }, sync) => {
+      const row = document.createElement("div");
+      row.className = "ddf-currency-row";
+
+      const idInput       = document.createElement("input");
+      idInput.type        = "text";
+      idInput.className   = "ddf-currency-id";
+      idInput.value       = id;
+      idInput.placeholder = "gp";
+      idInput.maxLength   = 6;
+      idInput.addEventListener("input", sync);
+
+      const nameInput       = document.createElement("input");
+      nameInput.type        = "text";
+      nameInput.className   = "ddf-currency-name";
+      nameInput.value       = name;
+      nameInput.placeholder = "Gold Pieces";
+      nameInput.addEventListener("input", sync);
+
+      const delBtn     = document.createElement("button");
+      delBtn.type      = "button";
+      delBtn.className = "ddf-currency-delete icon";
+      delBtn.title     = "Remove currency";
+      delBtn.innerHTML = '<i class="fa-solid fa-trash"></i>';
+      delBtn.addEventListener("click", () => { row.remove(); sync(); });
+
+      row.append(idInput, nameInput, delBtn);
+      return row;
+    }
+  });
 
   // ── SCM Integration: inject section header before first SCM setting ───────
   const scmFirstInput = root.querySelector(`input[name="${MODULE_ID}.scmMemberAdded"]`);

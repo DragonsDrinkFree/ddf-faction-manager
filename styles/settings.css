@@ -1,0 +1,253 @@
+/* ═══════════════════════════════════════════════════════════════════
+   INLINE SETTINGS CONTROLS  (.ddf-inline-stat-editor)
+   Injected into Foundry's native Game Settings panel via hook.
+   ═══════════════════════════════════════════════════════════════════ */
+
+.ddf-inline-stat-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
+.ddf-inline-stat-editor .ddf-stat-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 160px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.ddf-inline-stat-editor .ddf-stat-list-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  opacity: 0.65;
+  padding: 0 0 2px;
+}
+
+.ddf-inline-stat-editor .ddf-stat-list-header .ddf-stat-col-name    { flex: 1; }
+.ddf-inline-stat-editor .ddf-stat-list-header .ddf-stat-col-default { width: 56px; text-align: center; }
+.ddf-inline-stat-editor .ddf-stat-list-header .ddf-stat-col-sizekey {
+  width: 28px;
+  text-align: center;
+  display: none; /* hidden until "Single Value" mode */
+}
+
+.ddf-inline-stat-editor.ddf-sizekey-visible .ddf-stat-list-header .ddf-stat-col-sizekey {
+  display: block;
+}
+
+.ddf-inline-stat-editor .ddf-stat-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ddf-inline-stat-editor .ddf-stat-name {
+  flex: 1;
+  font-size: 0.85rem;
+  margin: 0;
+  height: unset;
+}
+
+.ddf-inline-stat-editor .ddf-stat-default {
+  width: 56px;
+  font-size: 0.85rem;
+  margin: 0;
+  height: unset;
+  text-align: center;
+}
+
+.ddf-inline-stat-editor .ddf-stat-sizekey-cell {
+  width: 28px;
+  display: none; /* hidden until "Single Value" mode */
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.ddf-inline-stat-editor.ddf-sizekey-visible .ddf-stat-sizekey-cell {
+  display: flex;
+}
+
+.ddf-inline-stat-editor .ddf-stat-delete {
+  flex-shrink: 0;
+  opacity: 0.5;
+  font-size: 0.8rem;
+  padding: 2px 6px;
+  min-height: unset;
+}
+
+.ddf-inline-stat-editor .ddf-stat-delete:hover {
+  opacity: 1;
+  color: var(--color-level-error, #c00);
+}
+
+.ddf-inline-stat-editor .ddf-add-stat-btn {
+  font-size: 0.8rem;
+  margin-top: 2px;
+  align-self: flex-start;
+  padding: 3px 10px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   CONNECTION TYPE SETTINGS EDITOR  (.ddf-inline-conntype-editor)
+   ═══════════════════════════════════════════════════════════════════ */
+
+.ddf-inline-conntype-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ddf-inline-conntype-editor .ddf-conntype-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.ddf-inline-conntype-editor .ddf-conntype-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ddf-inline-conntype-editor .ddf-conntype-name {
+  flex: 1;
+  font-size: 0.85rem;
+}
+
+.ddf-inline-conntype-editor .ddf-conntype-color {
+  width: 36px;
+  height: 24px;
+  padding: 1px 2px;
+  cursor: pointer;
+  border: 1px solid var(--color-border-dark-primary);
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.ddf-inline-conntype-editor .ddf-conntype-delete {
+  flex-shrink: 0;
+  opacity: 0.5;
+  font-size: 0.8rem;
+}
+
+.ddf-inline-conntype-editor .ddf-conntype-delete:hover {
+  opacity: 1;
+  color: var(--color-level-error, #c00);
+}
+
+.ddf-inline-conntype-editor .ddf-add-conntype-btn {
+  font-size: 0.8rem;
+  margin-top: 2px;
+  align-self: flex-start;
+  padding: 3px 10px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   RELATIONSHIP MAP BACKGROUND SETTINGS
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* File picker row: [text input][browse][clear] */
+.ddf-file-picker-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+}
+
+.ddf-file-picker-wrap .ddf-bg-path-input {
+  flex: 1;
+  font-size: 0.85rem;
+  margin: 0;
+  height: unset;
+}
+
+.ddf-file-picker-wrap .ddf-bg-browse-btn,
+.ddf-file-picker-wrap .ddf-bg-clear-btn {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  font-size: 0.85rem;
+  min-height: unset;
+}
+
+.ddf-file-picker-wrap .ddf-bg-clear-btn {
+  opacity: 0.55;
+}
+.ddf-file-picker-wrap .ddf-bg-clear-btn:hover {
+  opacity: 1;
+  color: var(--color-level-error, #c00);
+}
+
+/* Color picker row: [swatch][hex text] */
+.ddf-color-picker-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ddf-color-picker-wrap .ddf-color-swatch {
+  width: 36px;
+  height: 26px;
+  padding: 1px 2px;
+  border-radius: 4px;
+  border: 1px solid var(--color-border-light-primary);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.ddf-color-picker-wrap .ddf-color-text-input {
+  width: 90px;
+  font-family: monospace;
+  font-size: 0.85rem;
+  margin: 0;
+  height: unset;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   CONNECTION TYPE BADGE  (.rel-type-badge)
+   Small colored pill shown on each stored connection in the detail pane.
+   ═══════════════════════════════════════════════════════════════════ */
+
+.rel-type-badge {
+  font-size: 0.62rem;
+  font-weight: bold;
+  letter-spacing: 0.02em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+  white-space: nowrap;
+  flex-shrink: 0;
+  line-height: 1.5;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   TYPE PICKER ROW  (.mm-type-row)
+   Shown inside Add Connection floating panels in the relationship map.
+   ═══════════════════════════════════════════════════════════════════ */
+
+.mm-type-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 0.82rem;
+  color: var(--color-text-dark-secondary);
+}
+
+.mm-type-row span {
+  white-space: nowrap;
+}
+
+.mm-type-row .mm-type-select {
+  flex: 1;
+  font-size: 0.82rem;
+  padding: 2px 4px;
+}
+

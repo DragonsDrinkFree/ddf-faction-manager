@@ -1,0 +1,45 @@
+{{!-- Recursive folder section partial.
+     Context: folder data object { id, name, color, sorting, collapsed, factions, childFolders }.
+     Hash: selectedId — passed through to faction-item and child folder-section calls. --}}
+<div class="ddf-folder-section{{#unless collapsed}} expanded{{/unless}}"
+     data-folder-id="{{id}}" data-sorting="{{sorting}}">
+
+  <div class="ddf-folder-header"
+    {{#if color}}style="background-color:{{color}};"{{/if}}>
+    <i class="fa-solid fa-folder-open fa-fw"></i>
+    <span class="ddf-folder-name" title="{{name}}">{{name}}</span>
+    <div class="ddf-folder-controls">
+      {{#unless collapsed}}
+        <a class="icon ddf-folder-btn" data-action="createSubFolder" title="Create Folder">
+          <span class="ddf-badge-icon">
+            <i class="fa-solid fa-folder"></i>
+            <i class="fa-solid fa-plus ddf-badge"></i>
+          </span>
+        </a>
+      {{/unless}}
+      <a class="icon ddf-folder-btn" data-action="createFactionInFolder" title="Create faction in folder">
+        <span class="ddf-badge-icon">
+          <i class="fa-solid fa-shield-halved"></i>
+          <i class="fa-solid fa-plus ddf-badge"></i>
+        </span>
+      </a>
+    </div>
+  </div>
+
+  {{#unless collapsed}}
+    <div class="ddf-folder-body"{{#if color}} style="border-left-color:{{color}};"{{/if}}>
+      {{#each childFolders}}
+        {{> ddf-folder-section this selectedId=../selectedId}}
+      {{/each}}
+      <ol class="faction-items ddf-folder-contents" data-folder-id="{{id}}">
+        {{#each factions}}
+          {{> ddf-faction-item faction=this selectedId=../selectedId}}
+        {{/each}}
+      </ol>
+      {{#unless factions.length}}{{#unless childFolders.length}}
+        <div class="faction-empty ddf-folder-empty">Empty folder.</div>
+      {{/unless}}{{/unless}}
+    </div>
+  {{/unless}}
+
+</div>

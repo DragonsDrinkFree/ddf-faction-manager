@@ -3,37 +3,21 @@ import { ProjectStore } from "../data/ProjectStore.js";
 import { RelationshipStore } from "../data/RelationshipStore.js";
 import { MemberStore } from "../data/MemberStore.js";
 import { EventLogStore } from "../data/EventLogStore.js";
-import { tryAddSessionNote } from "../utils/SandboxIntegration.js";
+import { BaseDetailApp } from "./BaseDetailApp.js";
 import {
   getConnectionTypes,
-  connectionTypePickerHTML,
-  connectionDirectionPickerHTML,
-  readSelectedDirection,
-  readSelectedType,
-  bindPanelDismiss,
   positionPanelBesideApp
 } from "../utils/ConnectionPanelHelpers.js";
+import { buildProjectContext, buildSelectedProjectContext } from "../utils/ProjectContext.js";
 
-const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
-
-export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) {
+export class FactionDetailApp extends BaseDetailApp {
   /** @type {Map<string, FactionDetailApp>} factionId → open instance */
   static #instances = new Map();
+  static get instances() { return FactionDetailApp.#instances; }
+  static idPrefix      = "ddf-faction-detail";
+  static fallbackTitle = "Faction";
 
-  #selectedFactionId = null;
-  #selectedProjectId = null;
-  #selectedMemberId  = null;
-  #activeTab = "overview";
-  #editingOverview = false;
-  #editingNoteId = null;
-
-  /**
-   * @param {string} factionId
-   */
-  constructor(factionId) {
-    super({ id: `ddf-faction-detail-${factionId}` });
-    this.#selectedFactionId = factionId;
-  }
+  #selectedMemberId = null;
 
   static DEFAULT_OPTIONS = {
     id: "ddf-faction-detail",
@@ -48,24 +32,9 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
       height: 520
     },
     actions: {
+      ...BaseDetailApp.SHARED_ACTIONS,
       openJournal:       FactionDetailApp.#onOpenJournal,
-      switchTab:         FactionDetailApp.#onSwitchTab,
-      createProject:     FactionDetailApp.#onCreateProject,
-      selectProject:     FactionDetailApp.#onSelectProject,
-      editOverview:      FactionDetailApp.#onEditOverview,
-      saveOverview:      FactionDetailApp.#onSaveOverview,
-      cancelOverview:    FactionDetailApp.#onCancelOverview,
-      saveInlineNote:    FactionDetailApp.#onSaveInlineNote,
-      cancelNoteEdit:    FactionDetailApp.#onCancelNoteEdit,
-      finishProject:     FactionDetailApp.#onFinishProject,
-      reactivateProject: FactionDetailApp.#onReactivateProject,
-      deleteProject:     FactionDetailApp.#onDeleteProject,
-      editNote:          FactionDetailApp.#onEditNote,
-      deleteNote:        FactionDetailApp.#onDeleteNote,
       breakParentLink:   FactionDetailApp.#onBreakParentLink,
-      deleteConnection:  FactionDetailApp.#onDeleteConnection,
-      addConnection:     FactionDetailApp.#onAddConnection,
-      openConnection:    FactionDetailApp.#onOpenConnection,
       addMember:         FactionDetailApp.#onAddMember,
       addRank:           FactionDetailApp.#onAddRank,
       selectMember:      FactionDetailApp.#onSelectMember,
@@ -76,7 +45,6 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
       unlinkMemberActor: FactionDetailApp.#onUnlinkMemberActor,
       linkMemberActor:   FactionDetailApp.#onLinkMemberActor,
       moveMember:        FactionDetailApp.#onMoveMember,
-      editObjective:     FactionDetailApp.#onEditObjective,
       addTag:            FactionDetailApp.#onAddTag,
       deleteTag:         FactionDetailApp.#onDeleteTag,
       addSecret:         FactionDetailApp.#onAddSecret,
@@ -99,41 +67,17 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
     }
   };
 
-  get title() {
-    return FactionStore.getAll()[this.#selectedFactionId]?.name ?? "Faction";
-  }
-
-  /**
-   * Open a detail window for the given faction.
-   * If a window for that faction is already open, bring it to front.
-   * @param {string} factionId
-   */
-  static show(factionId) {
-    if (!game.user.isGM) return;
-
-    // Reuse an already-open window for this faction
-    const existing = FactionDetailApp.#instances.get(factionId);
-    if (existing?.element?.isConnected) {
-      existing.render({ force: true });
-      return;
-    }
-
-    const app = new FactionDetailApp(factionId);
-    FactionDetailApp.#instances.set(factionId, app);
-    app.render({ force: true });
-  }
-
   // ─── Context ─────────────────────────────────────────────────────────────────
 
   /** @override */
   async _prepareContext(options) {
     const context = await super._prepareContext(options);
-    context.activeTab = this.#activeTab;
+    context.activeTab = this._activeTab;
     context.tabs = [
-      { id: "overview",  label: "Overview",   icon: "fa-solid fa-scroll",      cssClass: this.#activeTab === "overview"  ? "active" : "" },
-      { id: "projects",  label: "Objectives", icon: "fa-solid fa-list-check",  cssClass: this.#activeTab === "projects"  ? "active" : "" },
-      { id: "members",   label: "Members",    icon: "fa-solid fa-users",       cssClass: this.#activeTab === "members"   ? "active" : "" },
-      { id: "eventlog",  label: "Event Log",  icon: "fa-solid fa-clock-rotate-left", cssClass: this.#activeTab === "eventlog" ? "active" : "" }
+      { id: "overview",  label: "Overview",   icon: "fa-solid fa-scroll",      cssClass: this._activeTab === "overview"  ? "active" : "" },
+      { id: "projects",  label: "Objectives", icon: "fa-solid fa-list-check",  cssClass: this._activeTab === "projects"  ? "active" : "" },
+      { id: "members",   label: "Members",    icon: "fa-solid fa-users",       cssClass: this._activeTab === "members"   ? "active" : "" },
+      { id: "eventlog",  label: "Event Log",  icon: "fa-solid fa-clock-rotate-left", cssClass: this._activeTab === "eventlog" ? "active" : "" }
     ];
     return context;
   }
@@ -144,16 +88,16 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
 
     if (partId !== "content") return context;
 
-    context.selectedFaction = this.#selectedFactionId
-      ? FactionStore.getAll()[this.#selectedFactionId] ?? null
+    context.selectedFaction = this._selectedFactionId
+      ? FactionStore.getAll()[this._selectedFactionId] ?? null
       : null;
 
     // Auto-select first active project when switching to the Projects tab
-    if (this.#activeTab === "projects" && this.#selectedFactionId && !this.#selectedProjectId) {
-      const all = ProjectStore.getForFaction(this.#selectedFactionId);
+    if (this._activeTab === "projects" && this._selectedFactionId && !this._selectedProjectId) {
+      const all = ProjectStore.getForFaction(this._selectedFactionId);
       const sorted = all.sort((a, b) => a.name.localeCompare(b.name));
       const first = sorted.find(p => p.status === "active") ?? sorted[0];
-      if (first) this.#selectedProjectId = first.id;
+      if (first) this._selectedProjectId = first.id;
     }
 
     // Overview: header stats + journal body + connections list
@@ -165,18 +109,18 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
     context.factionStats = context.selectedFaction?.stats ?? {};
     context.journalContent    = await this.#getJournalContent();
     context.connectionTypes   = getConnectionTypes();
-    context.relationshipItems = this.#selectedFactionId
+    context.relationshipItems = this._selectedFactionId
       ? this.#buildRelationshipItems()
       : [];
 
     // Objectives tab
-    context.selectedProjectId = this.#selectedProjectId;
-    context.projects           = this.#buildProjectContext();
-    context.selectedProject    = this.#buildSelectedProjectContext();
-    context.editingOverview    = this.#editingOverview;
-    context.editingNoteId      = this.#editingNoteId;
+    context.selectedProjectId = this._selectedProjectId;
+    context.projects           = buildProjectContext(this._selectedFactionId);
+    context.selectedProject    = buildSelectedProjectContext(this._selectedProjectId);
+    context.editingOverview    = this._editingOverview;
+    context.editingNoteId      = this._editingNoteId;
 
-    if (context.selectedProject && !this.#editingOverview) {
+    if (context.selectedProject && !this._editingOverview) {
       context.selectedProject.enrichedDescription =
         await foundry.applications.ux.TextEditor.implementation.enrichHTML(
           context.selectedProject.description ?? "", { async: true }
@@ -199,8 +143,8 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
     context.rumors      = sf?.rumors  ?? [];
 
     // Event Log tab
-    context.eventLogEntries = this.#selectedFactionId
-      ? EventLogStore.getForFaction(this.#selectedFactionId).map(e => ({
+    context.eventLogEntries = this._selectedFactionId
+      ? EventLogStore.getForFaction(this._selectedFactionId).map(e => ({
           ...e,
           formattedTime: new Date(e.timestamp).toLocaleString()
         }))
@@ -209,22 +153,12 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
     return context;
   }
 
-  // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-  /** Log an event for the current faction and optionally push to Sandbox. */
-  async #logEvent(category, text, settingKey = null) {
-    if (!this.#selectedFactionId) return;
-    const factionName = FactionStore.getAll()[this.#selectedFactionId]?.name ?? "Faction";
-    await EventLogStore.addEntry(this.#selectedFactionId, category, text);
-    await tryAddSessionNote(text, factionName, settingKey);
-  }
-
   // ─── Relationship Items (read-only list for Overview pane) ────────────────────
 
   #buildRelationshipItems() {
     const allFactions = FactionStore.getAll();
-    const faction     = allFactions[this.#selectedFactionId];
-    const storedEdges = RelationshipStore.getEdgesForFaction(this.#selectedFactionId);
+    const faction     = allFactions[this._selectedFactionId];
+    const storedEdges = RelationshipStore.getEdgesForFaction(this._selectedFactionId);
 
     const ICON = {
       Actor:        "fa-solid fa-user",
@@ -251,7 +185,7 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
 
     // Sub-faction auto-connections (derived from hierarchy, not stored)
     const subItems = Object.values(allFactions)
-      .filter(f => f.parentId === this.#selectedFactionId)
+      .filter(f => f.parentId === this._selectedFactionId)
       .sort((a, b) => a.name.localeCompare(b.name))
       .map(f => ({
         id:              `sub_${f.id}`,
@@ -318,13 +252,13 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
     // ── Stat inputs: auto-save on change (blur after edit) ───────────────────
     this.element.querySelectorAll(".faction-stat-input").forEach(input => {
       input.addEventListener("change", async (e) => {
-        if (!this.#selectedFactionId) return;
+        if (!this._selectedFactionId) return;
         const statId  = e.target.dataset.statId;
         const value   = e.target.value.trim();
-        const faction = FactionStore.getAll()[this.#selectedFactionId];
+        const faction = FactionStore.getAll()[this._selectedFactionId];
         if (!faction) return;
         const stats = { ...(faction.stats ?? {}), [statId]: value };
-        await FactionStore.update(this.#selectedFactionId, { stats });
+        await FactionStore.update(this._selectedFactionId, { stats });
       });
     });
 
@@ -337,7 +271,7 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
         const typeName = typeId
           ? (getConnectionTypes().find(t => t.id === typeId)?.name ?? typeId)
           : "none";
-        await this.#logEvent("connection", `Connection type changed to: ${typeName}`, "scmConnectionTypeChanged");
+        await this._logEvent("connection", `Connection type changed to: ${typeName}`, "scmConnectionTypeChanged");
         this.render({ parts: ["content"] });
       });
     });
@@ -352,7 +286,7 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
         const next       = current === "two-way" ? "one-way" : "two-way";
         const swapParties = isReversed && next === "one-way";
         await RelationshipStore.updateEdgeDirection(edgeId, next, { swapParties });
-        await this.#logEvent("connection", `Connection direction changed to: ${next}`, "scmConnectionDirectionChanged");
+        await this._logEvent("connection", `Connection direction changed to: ${next}`, "scmConnectionDirectionChanged");
         this.render({ parts: ["content"] });
       });
     });
@@ -364,9 +298,9 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
 
     if (textarea) {
       // Pre-fill editor when editing an existing note
-      if (this.#editingNoteId && this.#selectedProjectId) {
-        const project = ProjectStore.getAll()[this.#selectedProjectId];
-        const note    = project?.notes.find(n => n.id === this.#editingNoteId);
+      if (this._editingNoteId && this._selectedProjectId) {
+        const project = ProjectStore.getAll()[this._selectedProjectId];
+        const note    = project?.notes.find(n => n.id === this._editingNoteId);
         if (note) {
           textarea.value = note.text;
           textarea.focus();
@@ -421,7 +355,7 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
         const { members, ranks } = MemberStore.getAll();
         const memberName = members[this.#selectedMemberId]?.name ?? "Member";
         const rankName   = rankId ? (ranks[rankId]?.name ?? "Unknown") : "Unranked";
-        await this.#logEvent("member", `${memberName}'s rank changed to: ${rankName}`, "scmMemberRankChanged");
+        await this._logEvent("member", `${memberName}'s rank changed to: ${rankName}`, "scmMemberRankChanged");
         this.render({ parts: ["content"] });
       });
     }
@@ -430,8 +364,8 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
   // ─── Helpers ─────────────────────────────────────────────────────────────────
 
   async #getJournalContent() {
-    if (!this.#selectedFactionId) return null;
-    const faction = FactionStore.getAll()[this.#selectedFactionId];
+    if (!this._selectedFactionId) return null;
+    const faction = FactionStore.getAll()[this._selectedFactionId];
     if (!faction) return null;
 
     const journal = FactionStore.getFactionJournal();
@@ -459,7 +393,7 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
     // Strip any @Faction link that refers to this faction itself (auto-inserted on create)
     const tmp = document.createElement("div");
     tmp.innerHTML = enriched;
-    tmp.querySelectorAll(`.ddf-faction-link[data-faction-id="${this.#selectedFactionId}"]`).forEach(el => {
+    tmp.querySelectorAll(`.ddf-faction-link[data-faction-id="${this._selectedFactionId}"]`).forEach(el => {
       const p = el.parentElement;
       el.remove();
       if (p?.tagName === "P" && !p.textContent.trim()) p.remove();
@@ -467,59 +401,11 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
     return tmp.innerHTML;
   }
 
-  /** Convert filled/sections into 4 quarter-bar descriptors for list display. */
-  static #quarterBars(filled, sections) {
-    const pct = sections > 0 ? (filled / sections) * 100 : 0;
-    return [0, 1, 2, 3].map(i => {
-      const low  = i * 25;
-      const high = low + 25;
-      if (pct >= high) return { filled: true,  partial: 100 };
-      if (pct <= low)  return { filled: false, partial: 0 };
-      return { filled: false, partial: Math.round((pct - low) / 25 * 100) };
-    });
-  }
-
-  #buildProjectContext() {
-    if (!this.#selectedFactionId) return { active: [], finished: [] };
-    const all = ProjectStore.getForFaction(this.#selectedFactionId);
-    const decorate = p => {
-      // Legacy support: projects with old progress (0-100) field treated as 4-pip tracks
-      const sections = p.sections ?? 4;
-      const filled   = p.filled   ?? Math.round((p.progress ?? 0) / 25);
-      return { ...p, sections, filled, quarterBars: FactionDetailApp.#quarterBars(filled, sections) };
-    };
-    const sort = arr => arr.sort((a, b) => a.name.localeCompare(b.name)).map(decorate);
-    return {
-      active:   sort(all.filter(p => p.status === "active")),
-      finished: sort(all.filter(p => p.status === "finished"))
-    };
-  }
-
-  #buildSelectedProjectContext() {
-    if (!this.#selectedProjectId) return null;
-    const project = ProjectStore.getAll()[this.#selectedProjectId];
-    if (!project) return null;
-
-    const sections = project.sections ?? 4;
-    const filled   = project.filled   ?? Math.round((project.progress ?? 0) / 25);
-
-    const notes = [...project.notes].reverse().map(n => ({
-      ...n,
-      formattedDate:  new Date(n.timestamp).toLocaleString(),
-      formattedDelta: n.progressDelta !== 0
-        ? `${n.progressDelta > 0 ? "+" : ""}${n.progressDelta}`
-        : "—",
-      deltaClass: n.progressDelta > 0 ? "positive" : n.progressDelta < 0 ? "negative" : "neutral"
-    }));
-
-    return { ...project, sections, filled, notes };
-  }
-
   async #buildMembersContext() {
-    if (!this.#selectedFactionId) return { membersByRank: [], factionRanks: [], subFactionSections: [] };
+    if (!this._selectedFactionId) return { membersByRank: [], factionRanks: [], subFactionSections: [] };
 
-    const ranks   = MemberStore.getRanksForFaction(this.#selectedFactionId);
-    const members = MemberStore.getMembersForFaction(this.#selectedFactionId);
+    const ranks   = MemberStore.getRanksForFaction(this._selectedFactionId);
+    const members = MemberStore.getMembersForFaction(this._selectedFactionId);
 
     // Group direct members by rank
     const byRank  = new Map(ranks.map(r => [r.id, []]));
@@ -547,7 +433,7 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
     // Sub-faction sections (read-only view of each child faction's members)
     const allFactions = FactionStore.getAll();
     const subFactionSections = Object.values(allFactions)
-      .filter(f => f.parentId === this.#selectedFactionId)
+      .filter(f => f.parentId === this._selectedFactionId)
       .sort((a, b) => a.name.localeCompare(b.name))
       .map(sf => ({
         factionId:   sf.id,
@@ -577,12 +463,12 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
 
     // Factions the member can be moved to: main + sub-factions, excluding current
     const allFactions   = FactionStore.getAll();
-    const mainFaction   = allFactions[this.#selectedFactionId];
+    const mainFaction   = allFactions[this._selectedFactionId];
     const subFactions   = Object.values(allFactions)
-      .filter(f => f.parentId === this.#selectedFactionId)
+      .filter(f => f.parentId === this._selectedFactionId)
       .sort((a, b) => a.name.localeCompare(b.name));
     const moveTargets = [
-      { id: this.#selectedFactionId, name: mainFaction?.name ?? "Main Faction" },
+      { id: this._selectedFactionId, name: mainFaction?.name ?? "Main Faction" },
       ...subFactions.map(f => ({ id: f.id, name: f.name }))
     ].filter(t => t.id !== member.factionId);
 
@@ -598,59 +484,6 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
     };
   }
 
-  static #promptName(title, label) {
-    return new Promise(resolve => {
-      foundry.applications.api.DialogV2.prompt({
-        window: { title },
-        content: `<div class="standard-form"><div class="form-group"><label>${label}</label><div class="form-fields"><input type="text" name="name" autofocus placeholder="${label}…" /></div></div></div>`,
-        ok: {
-          label: "Create",
-          callback: (_event, button) => {
-            const value = button.form.elements.name.value.trim();
-            resolve(value || null);
-          }
-        },
-        rejectClose: false
-      }).catch(() => resolve(null));
-    });
-  }
-
-  static #promptObjective(title, existing = null) {
-    return new Promise(resolve => {
-      const defaultSections = existing?.sections ?? 8;
-      foundry.applications.api.DialogV2.prompt({
-        window: { title },
-        content: `
-          <div class="standard-form">
-            <div class="form-group">
-              <label>Name</label>
-              <div class="form-fields">
-                <input type="text" name="obj_name" autofocus
-                       value="${foundry.utils.escapeHTML(existing?.name ?? "")}"
-                       placeholder="Objective name…" />
-              </div>
-            </div>
-            <div class="form-group">
-              <label>Required Progress</label>
-              <div class="form-fields">
-                <input type="number" name="obj_sections"
-                       value="${defaultSections}" min="1" max="99" style="width:80px;" />
-              </div>
-            </div>
-          </div>`,
-        ok: {
-          label: existing ? "Save" : "Create",
-          callback: (_event, button) => {
-            const name     = button.form.elements.obj_name.value.trim();
-            const sections = parseInt(button.form.elements.obj_sections.value) || 8;
-            resolve(name ? { name, sections } : null);
-          }
-        },
-        rejectClose: false
-      }).catch(() => resolve(null));
-    });
-  }
-
   // ─── Action Handlers ─────────────────────────────────────────────────────────
 
   static #onOpenJournal(_event, _target) {
@@ -659,182 +492,13 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
     journal.sheet.render({ force: true });
   }
 
-  static #onSwitchTab(_event, target) {
-    const tabId = target.dataset.tab;
-    if (!tabId || tabId === this.#activeTab) return;
-    this.#activeTab = tabId;
-    this.render();
-  }
-
-  static async #onCreateProject(_event, _target) {
-    if (!this.#selectedFactionId) return;
-    const result = await FactionDetailApp.#promptObjective("New Objective");
-    if (!result) return;
-    const project = await ProjectStore.create(this.#selectedFactionId, result.name, result.sections);
-    this.#selectedProjectId = project.id;
-    await this.#logEvent("objective", `Objective created: ${project.name}`, "scmObjectiveCreated");
-    this.render();
-  }
-
-  static async #onEditObjective(_event, _target) {
-    if (!this.#selectedProjectId) return;
-    const project = ProjectStore.getAll()[this.#selectedProjectId];
-    if (!project) return;
-    const result = await FactionDetailApp.#promptObjective("Edit Objective", project);
-    if (!result) return;
-    const newFilled = Math.min(project.filled ?? 0, result.sections);
-    await ProjectStore.update(this.#selectedProjectId, { name: result.name, sections: result.sections, filled: newFilled });
-    this.render({ parts: ["content"] });
-  }
-
-  static #onSelectProject(_event, target) {
-    const id = target.closest("[data-project-id]")?.dataset.projectId;
-    if (!id || id === this.#selectedProjectId) return;
-    this.#selectedProjectId = id;
-    this.#editingOverview   = false;
-    this.#editingNoteId     = null;
-    this.render({ parts: ["content"] });
-  }
-
-  static #onEditOverview(_event, _target) {
-    if (!this.#selectedProjectId) return;
-    this.#editingOverview = true;
-    this.render({ parts: ["content"] });
-  }
-
-  static async #onSaveOverview(_event, _target) {
-    if (!this.#selectedProjectId) return;
-    const textarea    = this.element.querySelector(".project-overview-textarea");
-    const description = textarea?.value ?? "";
-    await ProjectStore.update(this.#selectedProjectId, { description });
-    this.#editingOverview = false;
-    this.render({ parts: ["content"] });
-  }
-
-  static #onCancelOverview(_event, _target) {
-    this.#editingOverview = false;
-    this.render({ parts: ["content"] });
-  }
-
-  static async #onSaveInlineNote(_event, _target) {
-    if (!this.#selectedProjectId) return;
-
-    const textarea    = this.element.querySelector(".note-draft-textarea");
-    const customInput = this.element.querySelector('input[name="note_custom"]');
-    const presetEl    = this.element.querySelector('input[name="note_preset"]:checked');
-
-    const text = textarea?.value.trim();
-    if (!text) return;
-
-    const delta = customInput?.value !== ""
-      ? Number(customInput.value) || 0
-      : presetEl ? Number(presetEl.value) : 0;
-
-    if (this.#editingNoteId) {
-      await ProjectStore.editNote(this.#selectedProjectId, this.#editingNoteId, text, delta);
-      this.#editingNoteId = null;
-    } else {
-      await ProjectStore.addNote(this.#selectedProjectId, text, delta);
-      const projectName = ProjectStore.getAll()[this.#selectedProjectId]?.name ?? "Objective";
-      const progressStr = delta ? ` (${delta > 0 ? "+" : ""}${delta}%)` : "";
-      await this.#logEvent("objective", `Progress note on "${projectName}"${progressStr}: ${text}`, "scmProgressNote");
-    }
-
-    this.render({ parts: ["content"] });
-  }
-
-  static async #onFinishProject(_event, _target) {
-    if (!this.#selectedProjectId) return;
-    const projectName = ProjectStore.getAll()[this.#selectedProjectId]?.name ?? "Objective";
-    await ProjectStore.update(this.#selectedProjectId, { status: "finished" });
-    await this.#logEvent("objective", `Objective completed: ${projectName}`, "scmObjectiveFinished");
-    this.render({ parts: ["content"] });
-  }
-
-  static async #onReactivateProject(_event, _target) {
-    if (!this.#selectedProjectId) return;
-    const projectName = ProjectStore.getAll()[this.#selectedProjectId]?.name ?? "Objective";
-    await ProjectStore.update(this.#selectedProjectId, { status: "active" });
-    await this.#logEvent("objective", `Objective reactivated: ${projectName}`, "scmObjectiveFinished");
-    this.render({ parts: ["content"] });
-  }
-
-  static async #onDeleteProject(_event, _target) {
-    if (!this.#selectedProjectId) return;
-    const project = ProjectStore.getAll()[this.#selectedProjectId];
-    if (!project) return;
-
-    const confirmed = await foundry.applications.api.DialogV2.confirm({
-      window: { title: "Delete Objective" },
-      content: `<p>Delete <strong>${project.name}</strong> and all its notes? This cannot be undone.</p>`
-    });
-    if (!confirmed) return;
-
-    await ProjectStore.delete(this.#selectedProjectId);
-    this.#selectedProjectId = null;
-    this.render({ parts: ["content"] });
-  }
-
-  static #onEditNote(_event, target) {
-    if (!this.#selectedProjectId) return;
-    const noteId = target.closest("[data-note-id]")?.dataset.noteId;
-    if (!noteId) return;
-    this.#editingNoteId = noteId;
-    this.render({ parts: ["content"] });
-  }
-
-  static #onCancelNoteEdit(_event, _target) {
-    this.#editingNoteId = null;
-    this.render({ parts: ["content"] });
-  }
-
-  static async #onDeleteNote(_event, target) {
-    if (!this.#selectedProjectId) return;
-    const noteId = target.closest("[data-note-id]")?.dataset.noteId;
-    if (!noteId) return;
-
-    const confirmed = await foundry.applications.api.DialogV2.confirm({
-      window: { title: "Delete Note" },
-      content: "<p>Delete this note? Progress will be recalculated.</p>"
-    });
-    if (!confirmed) return;
-
-    await ProjectStore.deleteNote(this.#selectedProjectId, noteId);
-    this.render({ parts: ["content"] });
-  }
-
-  static async #onOpenConnection(_event, target) {
-    const factionId = target.dataset.targetFactionId;
-    const uuid      = target.dataset.documentUuid;
-    if (factionId) {
-      FactionDetailApp.show(factionId);
-    } else if (uuid) {
-      const doc = await fromUuid(uuid);
-      doc?.sheet?.render({ force: true });
-    }
-  }
-
-  static async #onDeleteConnection(_event, target) {
-    const edgeId = target.closest("[data-edge-id]")?.dataset.edgeId;
-    if (!edgeId) return;
-
-    const confirmed = await foundry.applications.api.DialogV2.confirm({
-      window: { title: "Remove Connection" },
-      content: "<p>Remove this connection? This cannot be undone.</p>"
-    });
-    if (!confirmed) return;
-
-    await RelationshipStore.deleteEdge(edgeId);
-    this.render({ parts: ["content"] });
-  }
-
   /**
    * Offer the GM a choice when breaking the parent-faction link:
    *   • Break completely  — removes parentId, no replacement edge
    *   • Keep as connection — removes parentId, adds a two-way faction edge
    */
   static async #onBreakParentLink(_event, target) {
-    const factionId = this.#selectedFactionId;
+    const factionId = this._selectedFactionId;
     if (!factionId) return;
 
     const allFactions  = FactionStore.getAll();
@@ -880,186 +544,17 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
     this.render({ force: true });
   }
 
-  // ─── Add Connection Panel ─────────────────────────────────────────────────────
-
-  static #onAddConnection(_event, target) {
-    this.#closeConnPanel();
-    if (!this.#selectedFactionId) return;
-
-    const fromFactionId = this.#selectedFactionId;
-
-    const panel = document.createElement("div");
-    panel.className = "mm-search-panel ddf-conn-panel";
-    positionPanelBesideApp(panel, this.element, target, 260);
-
-    panel.innerHTML = `
-      <div class="mm-panel-title">Add Connection</div>
-      <div class="mm-panel-options">
-        <button class="mm-option" data-mode="faction">
-          <i class="fa-solid fa-shield-halved"></i> Faction
-        </button>
-        <button class="mm-option" data-mode="document">
-          <i class="fa-solid fa-file"></i> Document
-        </button>
-      </div>
-    `;
-
-    panel.querySelector('[data-mode="faction"]').addEventListener("click",   () => this.#showConnFactionSearch(panel, fromFactionId));
-    panel.querySelector('[data-mode="document"]').addEventListener("click",  () => this.#showConnDocumentSearch(panel, fromFactionId));
-
-    // Attach to body so it can appear outside the faction window bounds
-    document.body.appendChild(panel);
-    bindPanelDismiss(panel);
-  }
-
-  #showConnFactionSearch(panel, fromFactionId) {
-    const allFactions  = FactionStore.getAll();
-    const liveEdges    = RelationshipStore.getEdgesForFaction(fromFactionId);
-    const connectedIds = new Set(
-      liveEdges.filter(e => e.type === "faction")
-               .map(e => e._reversed ? e.fromFactionId : e.toFactionId)
-    );
-    connectedIds.add(fromFactionId);
-    // Also exclude factions already linked via parent/child hierarchy
-    const faction = allFactions[fromFactionId];
-    if (faction?.parentId) connectedIds.add(faction.parentId);
-    Object.values(allFactions).filter(f => f.parentId === fromFactionId).forEach(f => connectedIds.add(f.id));
-
-    const candidates = Object.values(allFactions).filter(f => !connectedIds.has(f.id));
-
-    panel.innerHTML = `
-      <div class="mm-panel-title">Link Faction</div>
-      <input type="text" class="mm-search-input" placeholder="Filter factions…" autofocus />
-      <div class="mm-search-results ddf-conn-faction-list">
-        ${candidates.length
-          ? candidates.map(f => `
-              <div class="mm-search-result" data-id="${f.id}">
-                <i class="fa-solid fa-link ddf-link-icon"></i>
-                <span>${foundry.utils.escapeHTML(f.name)}</span>
-              </div>`).join("")
-          : "<div class='mm-search-empty'>No factions available</div>"
-        }
-      </div>
-      ${connectionTypePickerHTML()}
-      ${connectionDirectionPickerHTML()}
-      <div class="mm-panel-actions"><button class="mm-btn-cancel">Cancel</button></div>
-    `;
-
-    const input   = panel.querySelector(".mm-search-input");
-    const results = panel.querySelector(".mm-search-results");
-
-    input.addEventListener("input", () => {
-      const q = input.value.toLowerCase();
-      results.querySelectorAll(".mm-search-result").forEach(el => {
-        el.style.display = el.textContent.toLowerCase().includes(q) ? "" : "none";
-      });
-    });
-
-    results.addEventListener("click", async (e) => {
-      const el = e.target.closest(".mm-search-result");
-      if (!el) return;
-      const toFactionId      = el.dataset.id;
-      const direction        = readSelectedDirection(panel);
-      const connectionTypeId = readSelectedType(panel);
-      const opts             = { toFactionId };
-      if (connectionTypeId) opts.connectionTypeId = connectionTypeId;
-      await RelationshipStore.createEdge(fromFactionId, "faction", direction, opts);
-      const fromName   = FactionStore.getAll()[fromFactionId]?.name ?? "Faction";
-      const toName     = FactionStore.getAll()[toFactionId]?.name   ?? "Faction";
-      const typeName   = connectionTypeId
-        ? (getConnectionTypes().find(t => t.id === connectionTypeId)?.name ?? "")
-        : "";
-      const dirArrow   = direction === "two-way" ? "↔" : "→";
-      await this.#logEvent("connection",
-        `Connection established: ${fromName} ${dirArrow} ${toName}${typeName ? ` (${typeName})` : ""}`,
-        "scmConnectionEstablished");
-      this.#closeConnPanel();
-      this.render({ parts: ["content"] });
-    });
-
-    panel.querySelector(".mm-btn-cancel").addEventListener("click", () => this.#closeConnPanel());
-    input.focus();
-  }
-
-  #showConnDocumentSearch(panel, fromFactionId) {
-    const collections = [
-      { type: "Actor",        icon: "fa-user",     col: game.actors  },
-      { type: "JournalEntry", icon: "fa-book",     col: game.journal },
-      { type: "Item",         icon: "fa-suitcase", col: game.items   },
-      { type: "Scene",        icon: "fa-map",      col: game.scenes  }
-    ];
-
-    const docs = [];
-    for (const { type, icon, col } of collections) {
-      for (const doc of col) docs.push({ uuid: doc.uuid, name: doc.name, type, icon });
-    }
-
-    panel.innerHTML = `
-      <div class="mm-panel-title">Link Document</div>
-      <input type="text" class="mm-search-input" placeholder="Filter documents…" autofocus />
-      <div class="mm-search-results">
-        ${docs.length
-          ? docs.map(d => `
-            <div class="mm-search-result" data-uuid="${d.uuid}" data-type="${d.type}" data-name="${foundry.utils.escapeHTML(d.name)}">
-              <i class="fa-solid ${d.icon}"></i> ${foundry.utils.escapeHTML(d.name)}
-              <span class="mm-result-type">${d.type}</span>
-            </div>`).join("")
-          : "<div class='mm-search-empty'>No documents found</div>"
-        }
-      </div>
-      ${connectionTypePickerHTML()}
-      ${connectionDirectionPickerHTML()}
-      <div class="mm-panel-actions"><button class="mm-btn-cancel">Cancel</button></div>
-    `;
-
-    const input   = panel.querySelector(".mm-search-input");
-    const results = panel.querySelector(".mm-search-results");
-
-    input.addEventListener("input", () => {
-      const q = input.value.toLowerCase();
-      results.querySelectorAll(".mm-search-result").forEach(el => {
-        el.style.display = el.dataset.name.toLowerCase().includes(q) ? "" : "none";
-      });
-    });
-
-    results.addEventListener("click", async (e) => {
-      const el = e.target.closest(".mm-search-result");
-      if (!el) return;
-      const direction        = readSelectedDirection(panel);
-      const connectionTypeId = readSelectedType(panel);
-      const opts = { documentUuid: el.dataset.uuid, documentType: el.dataset.type, documentName: el.dataset.name };
-      if (connectionTypeId) opts.connectionTypeId = connectionTypeId;
-      await RelationshipStore.createEdge(fromFactionId, "document", direction, opts);
-      const typeName = connectionTypeId
-        ? (getConnectionTypes().find(t => t.id === connectionTypeId)?.name ?? "")
-        : "";
-      const dirArrow = direction === "two-way" ? "↔" : "→";
-      await this.#logEvent("connection",
-        `Document linked: ${el.dataset.name} ${dirArrow}${typeName ? ` (${typeName})` : ""}`,
-        "scmConnectionEstablished");
-      this.#closeConnPanel();
-      this.render({ parts: ["content"] });
-    });
-
-    panel.querySelector(".mm-btn-cancel").addEventListener("click", () => this.#closeConnPanel());
-    input.focus();
-  }
-
-  #closeConnPanel() {
-    document.querySelectorAll(".ddf-conn-panel").forEach(el => el.remove());
-  }
-
   // ─── Member Actions ───────────────────────────────────────────────────────────
 
   static #onAddMember(_event, target) {
-    if (!this.#selectedFactionId) return;
+    if (!this._selectedFactionId) return;
     this.#showMemberAddPanel(target);
   }
 
   #showMemberAddPanel(triggerEl) {
     document.querySelectorAll(".ddf-member-add-panel").forEach(el => el.remove());
 
-    const factionId = this.#selectedFactionId;
+    const factionId = this._selectedFactionId;
 
     const panel = document.createElement("div");
     panel.className  = "mm-search-panel ddf-member-add-panel";
@@ -1122,7 +617,7 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
         actorUuid: el.dataset.uuid
       });
       this.#selectedMemberId = member.id;
-      await this.#logEvent("member", `Member added: ${member.name}`, "scmMemberAdded");
+      await this._logEvent("member", `Member added: ${member.name}`, "scmMemberAdded");
       panel.remove();
       this.render({ parts: ["content"] });
     });
@@ -1132,7 +627,7 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
       const name   = input.value.trim() || "Unnamed Member";
       const member = await MemberStore.createMember(factionId, { name });
       this.#selectedMemberId = member.id;
-      await this.#logEvent("member", `Member added: ${member.name}`, "scmMemberAdded");
+      await this._logEvent("member", `Member added: ${member.name}`, "scmMemberAdded");
       panel.remove();
       this.render({ parts: ["content"] });
     });
@@ -1149,7 +644,7 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
         actorUuid: actor.uuid
       });
       this.#selectedMemberId = member.id;
-      await this.#logEvent("member", `Member added: ${member.name}`, "scmMemberAdded");
+      await this._logEvent("member", `Member added: ${member.name}`, "scmMemberAdded");
       panel.remove();
       this.render({ parts: ["content"] });
     });
@@ -1208,11 +703,11 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
   }
 
   static async #onAddRank(_event, _target) {
-    if (!this.#selectedFactionId) return;
-    const maxOrder = MemberStore.getMaxOrder(this.#selectedFactionId);
+    if (!this._selectedFactionId) return;
+    const maxOrder = MemberStore.getMaxOrder(this._selectedFactionId);
     const result   = await FactionDetailApp.#promptRank("New Rank", null, maxOrder + 1);
     if (!result) return;
-    await MemberStore.createRank(this.#selectedFactionId, result);
+    await MemberStore.createRank(this._selectedFactionId, result);
     this.render({ parts: ["content"] });
   }
 
@@ -1224,13 +719,13 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
   }
 
   static async #onEditRank(_event, target) {
-    if (!this.#selectedFactionId) return;
+    if (!this._selectedFactionId) return;
     const rankId = target.closest("[data-rank-id]")?.dataset.rankId;
     if (!rankId) return;
     const { ranks } = MemberStore.getAll();
     const rank     = ranks[rankId];
     if (!rank) return;
-    const maxOrder = MemberStore.getMaxOrder(this.#selectedFactionId);
+    const maxOrder = MemberStore.getMaxOrder(this._selectedFactionId);
     const result   = await FactionDetailApp.#promptRank("Edit Rank", rank, maxOrder);
     if (!result) return;
     await MemberStore.updateRank(rankId, result);
@@ -1266,7 +761,7 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
     });
     if (!confirmed) return;
 
-    await this.#logEvent("member", `Member removed: ${member.name}`, "scmMemberRemoved");
+    await this._logEvent("member", `Member removed: ${member.name}`, "scmMemberRemoved");
     await MemberStore.deleteMember(this.#selectedMemberId);
     this.#selectedMemberId = null;
     this.render({ parts: ["content"] });
@@ -1302,11 +797,11 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
 
     const allFactions = FactionStore.getAll();
     const subFactions = Object.values(allFactions)
-      .filter(f => f.parentId === this.#selectedFactionId)
+      .filter(f => f.parentId === this._selectedFactionId)
       .sort((a, b) => a.name.localeCompare(b.name));
 
     const targets = [
-      { id: this.#selectedFactionId, name: allFactions[this.#selectedFactionId]?.name ?? "Main Faction" },
+      { id: this._selectedFactionId, name: allFactions[this._selectedFactionId]?.name ?? "Main Faction" },
       ...subFactions.map(f => ({ id: f.id, name: f.name }))
     ].filter(t => t.id !== member.factionId);
 
@@ -1409,24 +904,24 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
   // ─── Tag Actions ─────────────────────────────────────────────────────────────
 
   static #onAddTag(_event, target) {
-    if (!this.#selectedFactionId) return;
+    if (!this._selectedFactionId) return;
     this.#showTagAddPanel(target);
   }
 
   static async #onDeleteTag(_event, target) {
     const tag = target.dataset.tag;
-    if (!tag || !this.#selectedFactionId) return;
-    const faction = FactionStore.getAll()[this.#selectedFactionId];
+    if (!tag || !this._selectedFactionId) return;
+    const faction = FactionStore.getAll()[this._selectedFactionId];
     if (!faction) return;
     const tags = (faction.tags ?? []).filter(t => t !== tag);
-    await FactionStore.update(this.#selectedFactionId, { tags });
+    await FactionStore.update(this._selectedFactionId, { tags });
     this.render({ parts: ["content"] });
   }
 
   #showTagAddPanel(triggerEl) {
     document.querySelectorAll(".ddf-tag-panel").forEach(el => el.remove());
 
-    const factionId   = this.#selectedFactionId;
+    const factionId   = this._selectedFactionId;
     const faction     = FactionStore.getAll()[factionId];
     const currentTags = new Set(faction?.tags ?? []);
     const allTags     = FactionStore.getAllTags().filter(t => !currentTags.has(t));
@@ -1501,40 +996,40 @@ export class FactionDetailApp extends HandlebarsApplicationMixin(ApplicationV2) 
   //   PC-knowledge tracking). For now this is deliberately minimal: plain text, add/delete only.
 
   static async #onAddSecret(_event, _target) {
-    if (!this.#selectedFactionId) return;
+    if (!this._selectedFactionId) return;
     const text = await FactionDetailApp.#promptSingleText("Add Secret", "Secret");
     if (!text) return;
-    const faction  = FactionStore.getAll()[this.#selectedFactionId];
+    const faction  = FactionStore.getAll()[this._selectedFactionId];
     const secrets  = [...(faction?.secrets ?? []), { id: foundry.utils.randomID(), text }];
-    await FactionStore.update(this.#selectedFactionId, { secrets });
+    await FactionStore.update(this._selectedFactionId, { secrets });
     this.render({ parts: ["content"] });
   }
 
   static async #onDeleteSecret(_event, target) {
     const id = target.dataset.secretId;
-    if (!id || !this.#selectedFactionId) return;
-    const faction = FactionStore.getAll()[this.#selectedFactionId];
+    if (!id || !this._selectedFactionId) return;
+    const faction = FactionStore.getAll()[this._selectedFactionId];
     const secrets = (faction?.secrets ?? []).filter(s => s.id !== id);
-    await FactionStore.update(this.#selectedFactionId, { secrets });
+    await FactionStore.update(this._selectedFactionId, { secrets });
     this.render({ parts: ["content"] });
   }
 
   static async #onAddRumor(_event, _target) {
-    if (!this.#selectedFactionId) return;
+    if (!this._selectedFactionId) return;
     const text = await FactionDetailApp.#promptSingleText("Add Rumor", "Rumor");
     if (!text) return;
-    const faction = FactionStore.getAll()[this.#selectedFactionId];
+    const faction = FactionStore.getAll()[this._selectedFactionId];
     const rumors  = [...(faction?.rumors ?? []), { id: foundry.utils.randomID(), text }];
-    await FactionStore.update(this.#selectedFactionId, { rumors });
+    await FactionStore.update(this._selectedFactionId, { rumors });
     this.render({ parts: ["content"] });
   }
 
   static async #onDeleteRumor(_event, target) {
     const id = target.dataset.rumorId;
-    if (!id || !this.#selectedFactionId) return;
-    const faction = FactionStore.getAll()[this.#selectedFactionId];
+    if (!id || !this._selectedFactionId) return;
+    const faction = FactionStore.getAll()[this._selectedFactionId];
     const rumors  = (faction?.rumors ?? []).filter(r => r.id !== id);
-    await FactionStore.update(this.#selectedFactionId, { rumors });
+    await FactionStore.update(this._selectedFactionId, { rumors });
     this.render({ parts: ["content"] });
   }
 

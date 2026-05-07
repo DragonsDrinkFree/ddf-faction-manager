@@ -45,12 +45,19 @@ export class FolderStore {
 
   // ─── Folder CRUD ──────────────────────────────────────────────────────────────
 
-  static async createFolder(name, { color = "", sorting = "a" } = {}) {
+  static async createFolder(name, { color = "", sorting = "a", parentFolderId = null } = {}) {
     const id      = foundry.utils.randomID();
     const folders = { ...this.getFolders() };
-    folders[id]   = { id, name, collapsed: false, color, sorting };
+    folders[id]   = { id, name, collapsed: false, color, sorting, parentFolderId: parentFolderId ?? null };
     await game.settings.set(MODULE_ID, "factionFolders", folders);
     return folders[id];
+  }
+
+  static async setFolderParent(folderId, parentFolderId) {
+    const folders = { ...this.getFolders() };
+    if (!folders[folderId]) return;
+    folders[folderId] = { ...folders[folderId], parentFolderId: parentFolderId ?? null };
+    await game.settings.set(MODULE_ID, "factionFolders", folders);
   }
 
   static async updateFolder(id, { name, color, sorting } = {}) {
@@ -68,10 +75,20 @@ export class FolderStore {
 
   static async deleteFolder(id) {
     const folders = { ...this.getFolders() };
+    if (!folders[id]) return;
+
+    // Promote direct child folders to this folder's parent before deleting
+    const parentFolderId = folders[id].parentFolderId ?? null;
+    for (const f of Object.values(folders)) {
+      if ((f.parentFolderId ?? null) === id) {
+        folders[f.id] = { ...folders[f.id], parentFolderId: parentFolderId };
+      }
+    }
+
     delete folders[id];
     await game.settings.set(MODULE_ID, "factionFolders", folders);
 
-    // Release all factions that were in this folder
+    // Release all factions that were in this folder (they become unfiled)
     const membership = { ...this.getMembership() };
     for (const fid of Object.keys(membership)) {
       if (membership[fid] === id) delete membership[fid];

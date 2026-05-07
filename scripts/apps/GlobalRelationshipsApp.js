@@ -3,6 +3,7 @@ import { RelationshipStore } from "../data/RelationshipStore.js";
 import { MemberStore } from "../data/MemberStore.js";
 import { MindMapRenderer, DOC_SIZE_PRESETS, NODE_KEY, parseNodeKey } from "./MindMapRenderer.js";
 import { FactionDetailApp } from "./FactionDetailApp.js";
+import { PartyDetailApp } from "./PartyDetailApp.js";
 import {
   getConnectionTypes,
   connectionTypePickerHTML,
@@ -11,6 +12,7 @@ import {
   readSelectedType,
   bindPanelDismiss
 } from "../utils/ConnectionPanelHelpers.js";
+import { syncAllSandboxPartyMembers, isSandboxPresent, getActiveSandboxPartyId } from "../utils/SandboxIntegration.js";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -34,12 +36,6 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
   /** Saved pan/zoom transform across full re-renders. */
   #savedTransform = null;
 
-  /** Whether the force-directed auto-layout simulation is armed (continuous mode). */
-  #forceLayoutActive = false;
-
-  /** Force level 1–5 controlling node spacing. 3 = default. */
-  #forceLevel = 3;
-
   /** Bound hook handlers for cleanup in _onClose. */
   #onFactionsChanged    = null;
   #onRelationshipsChanged = null;
@@ -52,22 +48,13 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
     window: {
       title: "Faction Relationships",
       resizable: true,
-      minimizable: true,
-      controls: [
-        {
-          icon:   "fa-solid fa-atom",
-          label:  "Auto Layout",
-          action: "toggleForceLayout"
-        }
-      ]
+      minimizable: true
     },
     position: {
       width: 900,
       height: 600
     },
-    actions: {
-      toggleForceLayout: GlobalRelationshipsApp.toggleForceLayout
-    }
+    actions: {}
   };
 
   static PARTS = {
@@ -93,7 +80,6 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
     this.#onMembersChanged = () => {
       if (!this.rendered) return;
       this.#mindMap?.remount();
-      if (this.#forceLayoutActive) this.#mindMap?.startForceLayout(this.#forceLevel);
     };
 
     Hooks.on("ddf-factions-changed",      this.#onFactionsChanged);
@@ -101,80 +87,14 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
     Hooks.on("ddf-members-changed",       this.#onMembersChanged);
   }
 
-  /** Title bar button handler: opens the auto-layout settings panel. */
-  static toggleForceLayout(event, target) {
-    this.#closeFloatingPanels();
-    const rect = target.getBoundingClientRect();
-    this.#showForceLayoutPanel(rect.left, rect.bottom + 4);
-  }
-
-  static show() {
+  static async show() {
     if (!game.user.isGM) return;
+    // Reconcile every sandbox-linked party's roster before the map mounts
+    await syncAllSandboxPartyMembers();
     if (!GlobalRelationshipsApp.#instance) {
       GlobalRelationshipsApp.#instance = new GlobalRelationshipsApp();
     }
     GlobalRelationshipsApp.#instance.render({ force: true });
-  }
-
-  // ─── Force Layout Panel ───────────────────────────────────────────────────────
-
-  #showForceLayoutPanel(x, y) {
-    const levelLabels = ["", "Very Close", "Close", "Normal", "Spread", "Far"];
-    const active = this.#forceLayoutActive;
-    const level  = this.#forceLevel;
-
-    const panel = document.createElement("div");
-    panel.className  = "mm-search-panel mm-force-panel";
-    panel.style.left = `${x}px`;
-    panel.style.top  = `${y}px`;
-
-    panel.innerHTML = `
-      <div class="mm-panel-title">Auto Layout</div>
-      <div class="mm-force-toggle-row">
-        <label class="mm-force-toggle-label">
-          <input type="checkbox" class="mm-force-toggle"${active ? " checked" : ""}>
-          <span>Continuously Rebalance</span>
-        </label>
-      </div>
-      <div class="mm-force-level-row">
-        <span class="mm-force-level-caption">Spacing:</span>
-        <input type="range" class="mm-force-level-slider" min="1" max="5" step="1" value="${level}">
-        <span class="mm-force-spacing-name">${levelLabels[level]}</span>
-      </div>
-      <div class="mm-panel-actions"><button class="mm-btn-cancel">Close</button></div>
-    `;
-
-    const toggle      = panel.querySelector(".mm-force-toggle");
-    const slider      = panel.querySelector(".mm-force-level-slider");
-    const spacingName = panel.querySelector(".mm-force-spacing-name");
-
-    const getAtomBtn = () => this.element?.querySelector('[data-action="toggleForceLayout"]');
-
-    toggle.addEventListener("change", () => {
-      if (toggle.checked) {
-        this.#forceLayoutActive = true;
-        getAtomBtn()?.classList.add("active");
-        this.#mindMap?.startForceLayout(this.#forceLevel);
-      } else {
-        this.#mindMap?.stopForceLayout(); // calls onForceLayoutStop → clears flag + button
-      }
-    });
-
-    slider.addEventListener("input", () => {
-      const lvl = parseInt(slider.value, 10);
-      this.#forceLevel = lvl;
-      spacingName.textContent = levelLabels[lvl];
-    });
-
-    slider.addEventListener("change", () => {
-      const lvl = parseInt(slider.value, 10);
-      this.#forceLevel = lvl;
-      if (this.#forceLayoutActive) this.#mindMap?.startForceLayout(lvl);
-    });
-
-    panel.querySelector(".mm-btn-cancel").addEventListener("click", () => this.#closeFloatingPanels());
-    this.#appendFloating(panel);
-    bindPanelDismiss(panel);
   }
 
   // ─── Context ─────────────────────────────────────────────────────────────────
@@ -187,9 +107,34 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
       const allFactions  = FactionStore.getAll();
       const customOrder  = this.#factionOrder;
 
-      // Top-level factions sorted by custom order, then alphabetical fallback
+      // Separate parties from regular factions
+      const allParties       = Object.values(allFactions).filter(f => f.kind === "party");
+      const decorateParty    = p => ({ ...p, isPOV: p.id === this.#povFactionId });
+
+      // SCM-aware party split
+      const scmPresent       = isSandboxPresent();
+      const activeSbPartyId  = getActiveSandboxPartyId();
+      const activePartyRecord = (scmPresent && activeSbPartyId)
+        ? allParties.find(p => p.sandboxPartyId === activeSbPartyId) ?? null
+        : null;
+
+      if (scmPresent) {
+        context.activeParty  = activePartyRecord ? decorateParty(activePartyRecord) : null;
+        context.otherParties = allParties
+          .filter(p => p.id !== activePartyRecord?.id)
+          .sort((a, b) => a.name.localeCompare(b.name))
+          .map(decorateParty);
+      } else {
+        context.activeParty  = null;
+        context.otherParties = allParties
+          .sort((a, b) => a.name.localeCompare(b.name))
+          .map(decorateParty);
+      }
+      context.scmPresent = scmPresent;
+
+      // Top-level non-party factions sorted by custom order, then alphabetical fallback
       const topLevel = Object.values(allFactions)
-        .filter(f => !f.parentId || !allFactions[f.parentId])
+        .filter(f => f.kind !== "party" && (!f.parentId || !allFactions[f.parentId]))
         .sort((a, b) => {
           if (customOrder) {
             const ia = customOrder.indexOf(a.id);
@@ -205,7 +150,7 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
       const orderedList = [];
       for (const parent of topLevel) {
         const subs = Object.values(allFactions)
-          .filter(f => f.parentId === parent.id)
+          .filter(f => f.parentId === parent.id && f.kind !== "party")
           .sort((a, b) => a.name.localeCompare(b.name));
 
         orderedList.push({
@@ -270,10 +215,6 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
 
     this.#teardownMindMap();
 
-    // Restore force-layout button active state after re-render
-    const forceBtn = this.element.querySelector('[data-action="toggleForceLayout"]');
-    if (forceBtn) forceBtn.classList.toggle("active", this.#forceLayoutActive);
-
     const wrap = this.element.querySelector(".relationship-canvas-wrap");
     if (wrap) {
       this.#applyCanvasBackground(wrap);
@@ -293,7 +234,7 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
     });
 
     // ── POV toggle (click on item row, not the collapse button) ──────────────
-    this.element.querySelectorAll(".global-rel-faction-item").forEach(item => {
+    this.element.querySelectorAll(".global-rel-faction-item, .global-rel-party-item").forEach(item => {
       item.addEventListener("click", () => {
         const factionId = item.dataset.factionId;
         if (factionId) this.#togglePOV(factionId);
@@ -356,6 +297,22 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
         // Hook fires → full re-render
       });
     }
+
+    // ── Left-pane filter ─────────────────────────────────────────────────────
+    const filterInput = this.element.querySelector(".global-rel-filter-input");
+    filterInput?.addEventListener("input", () => {
+      const q = filterInput.value.toLowerCase().trim();
+      this.element.querySelectorAll(".global-rel-faction-item, .global-rel-party-item").forEach(el => {
+        const match = !q || el.dataset.filterName?.toLowerCase().includes(q);
+        el.style.display = match ? "" : "none";
+      });
+      this.element.querySelectorAll(".global-rel-doc-item").forEach(el => {
+        const match = !q || el.dataset.filterName?.toLowerCase().includes(q);
+        el.style.display = match ? "" : "none";
+      });
+      const docEmpty = this.element.querySelector(".global-rel-doc-empty");
+      if (docEmpty) docEmpty.style.display = q ? "none" : "";
+    });
 
     // ── Drag-to-reorder (top-level factions only) ─────────────────────────────
     this.#wireDragReorder();
@@ -439,13 +396,12 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
     this.#povFactionId = (this.#povFactionId === factionId) ? null : factionId;
 
     // Update left-pane CSS without a full re-render
-    this.element.querySelectorAll(".global-rel-faction-item").forEach(el => {
+    this.element.querySelectorAll(".global-rel-faction-item, .global-rel-party-item").forEach(el => {
       el.classList.toggle("selected", el.dataset.factionId === this.#povFactionId);
     });
 
     // Remount the mind map with the new POV (getters re-read fresh data)
     this.#mindMap?.remount();
-    if (this.#forceLayoutActive) this.#mindMap?.startForceLayout(this.#forceLevel);
 
     // Pan to centre on the newly selected node
     if (this.#povFactionId) {
@@ -491,6 +447,22 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
       get allFactions()           { return FactionStore.getAll(); },
       get edges()                 { return RelationshipStore.getAll().edges; },
       get members()               { return MemberStore.getAll().members; },
+      get partyMembers() {
+        const result = [];
+        for (const f of Object.values(FactionStore.getAll())) {
+          if (f.kind !== "party") continue;
+          for (const m of (f.members ?? [])) result.push({ ...m, factionId: f.id });
+        }
+        return result;
+      },
+      get partyRetainers() {
+        const result = [];
+        for (const f of Object.values(FactionStore.getAll())) {
+          if (f.kind !== "party") continue;
+          for (const r of (f.retainers ?? [])) result.push({ ...r, factionId: f.id });
+        }
+        return result;
+      },
       get pinnedDocuments()       { return RelationshipStore.getPinnedDocuments(); },
       get documentSizes()         { return RelationshipStore.getDocumentSizes(); },
       get positions()             { return RelationshipStore.getPositions("__global__"); },
@@ -509,8 +481,8 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
         RelationshipStore.savePosition("__global__", nodeKey, x, y);
       },
 
-      onContextMenu: (_sx, _sy, clientX, clientY) => {
-        app.#showCanvasContextMenu(clientX, clientY);
+      onContextMenu: (worldX, worldY, clientX, clientY) => {
+        app.#showCanvasContextMenu(clientX, clientY, worldX, worldY);
       },
 
       onNodeContextMenu: (nodeKey, _edge, clientX, clientY) => {
@@ -521,10 +493,24 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
         app.#togglePOV(factionId);
       },
 
-      onForceLayoutStop: () => {
-        app.#forceLayoutActive = false;
-        const btn = app.element.querySelector('[data-action="toggleForceLayout"]');
-        if (btn) btn.classList.remove("active");
+      onConnectNodes: (fromKey, toKey, clientX, clientY) => {
+        const from = app.#describeNode(fromKey);
+        const to   = app.#describeNode(toKey);
+        app.#closeFloatingPanels();
+        if (from.isDocLike && to.isDocLike) {
+          app.#showDocToDocConnectionPanel(from.uuid, from.name, to.uuid, to.name, clientX, clientY);
+        } else if (from.kind === "faction" && to.isDocLike) {
+          app.#showDirectDocumentConnectionPanel(from.factionId, to.uuid, to.docType, to.docName, clientX, clientY);
+        } else if (from.isDocLike && to.kind === "faction") {
+          app.#showDirectDocumentConnectionPanel(to.factionId, from.uuid, from.docType, from.docName, clientX, clientY);
+        } else if (from.kind === "faction" && to.kind === "faction") {
+          app.#showDirectConnectionPanel(from.factionId, to.factionId, clientX, clientY);
+        }
+      },
+
+      onEdgeClick: (edgeId, clientX, clientY) => {
+        app.#closeFloatingPanels();
+        app.#showEdgePanel(edgeId, clientX, clientY);
       }
     });
 
@@ -533,36 +519,63 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
       this.#savedTransform = null;
     }
     this.#mindMap.mount();
-    if (this.#forceLayoutActive) this.#mindMap.startForceLayout(this.#forceLevel);
 
     this.#resizeObserver = new ResizeObserver(() => {
-      if (this.#mindMap) {
-        this.#mindMap.remount();
-        if (this.#forceLayoutActive) this.#mindMap.startForceLayout(this.#forceLevel);
-      }
+      if (this.#mindMap) this.#mindMap.remount();
     });
     this.#resizeObserver.observe(wrap);
   }
 
   // ─── Canvas Context Menu (Add Connection) ─────────────────────────────────────
 
-  #showCanvasContextMenu(clientX, clientY) {
+  #showCanvasContextMenu(clientX, clientY, worldX = 0, worldY = 0) {
     this.#closeFloatingPanels();
 
     if (!this.#povFactionId) {
-      // No POV: cannot add from canvas; show a hint
-      const hint = document.createElement("div");
-      hint.className = "mm-search-panel";
-      hint.style.left = `${clientX}px`;
-      hint.style.top  = `${clientY}px`;
-      hint.innerHTML = `
-        <div class="mm-panel-title">Add Connection</div>
-        <p class="mm-panel-hint-text">Click a faction node or select one in the left pane to select a node first.</p>
-        <div class="mm-panel-actions"><button class="mm-btn-cancel">Close</button></div>
+      // No POV: offer to create a new node (faction or document)
+      const panel = document.createElement("div");
+      panel.className  = "mm-search-panel";
+      panel.style.left = `${clientX}px`;
+      panel.style.top  = `${clientY}px`;
+      panel.innerHTML = `
+        <div class="mm-panel-title">Create / Add Node</div>
+        <div class="mm-panel-options">
+          <button class="mm-option" data-mode="faction">
+            <i class="fa-solid fa-shield-halved"></i> New Faction
+          </button>
+          <button class="mm-option" data-mode="document">
+            <i class="fa-solid fa-file"></i> Add Document
+          </button>
+        </div>
       `;
-      hint.querySelector(".mm-btn-cancel").addEventListener("click", () => this.#closeFloatingPanels());
-      this.#appendFloating(hint);
-      bindPanelDismiss(hint);
+      panel.querySelector('[data-mode="faction"]').addEventListener("click", () => {
+        panel.innerHTML = `
+          <div class="mm-panel-title">New Faction</div>
+          <input type="text" class="mm-search-input" placeholder="Faction name…" autofocus>
+          <div class="mm-panel-actions">
+            <button class="mm-btn-confirm">Create</button>
+            <button class="mm-btn-cancel">Cancel</button>
+          </div>
+        `;
+        const nameInput = panel.querySelector(".mm-search-input");
+        panel.querySelector(".mm-btn-confirm").addEventListener("click", async () => {
+          const name = nameInput.value.trim();
+          if (!name) return;
+          const faction = await FactionStore.create(name);
+          await RelationshipStore.savePosition("__global__", faction.id, worldX, worldY);
+          this.#closeFloatingPanels();
+          this.render({ force: true });
+        });
+        nameInput.addEventListener("keydown", async (e) => {
+          if (e.key === "Enter") panel.querySelector(".mm-btn-confirm").click();
+        });
+        panel.querySelector(".mm-btn-cancel").addEventListener("click", () => this.#closeFloatingPanels());
+      });
+      panel.querySelector('[data-mode="document"]').addEventListener("click", () => {
+        this.#showDocumentSearch(panel, null);
+      });
+      this.#appendFloating(panel);
+      bindPanelDismiss(panel);
       return;
     }
 
@@ -834,13 +847,19 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
     }
 
     // ─── Build menu HTML ────────────────────────────────────────────────────
+    const isScene        = target.docType === "Scene";
+    const sheetLabel     = isScene ? "Load Scene"         : "Open Sheet";
+    const sheetIcon      = isScene ? "fa-solid fa-map"    : "fa-solid fa-arrow-up-right-from-square";
+    // Size controls shown only when inspecting in isolation: no node selected, or this node IS selected
+    const showSizeControls = target.isDocLike && (!this.#povFactionId || isCurrent);
+
     let menuHTML = `
       <button class="mm-node-menu-item" data-action="open-sheet">
-        <i class="fa-solid fa-arrow-up-right-from-square"></i> Open Sheet
+        <i class="${sheetIcon}"></i> ${sheetLabel}
       </button>
     `;
 
-    if (target.isDocLike) {
+    if (showSizeControls) {
       const sliderMin = Math.round(presets.small * 0.5);
       const sliderMax = Math.round(presets.large * 2);
       menuHTML += `
@@ -895,13 +914,22 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
       this.#closeFloatingPanels();
       if (target.isDocLike) {
         const doc = await fromUuid(target.uuid);
-        doc?.sheet?.render(true);
+        if (isScene) {
+          doc?.activate();
+        } else {
+          doc?.sheet?.render(true);
+        }
       } else {
-        FactionDetailApp.show(nodeKey);
+        const faction = FactionStore.getAll()[nodeKey];
+        if (faction?.kind === "party") {
+          PartyDetailApp.show(nodeKey);
+        } else {
+          FactionDetailApp.show(nodeKey);
+        }
       }
     });
 
-    if (target.isDocLike) {
+    if (showSizeControls) {
       menu.querySelectorAll(".mm-doc-size-btn").forEach(btn => {
         btn.addEventListener("click", async () => {
           const px = parseInt(btn.dataset.sizePx, 10);
@@ -1062,6 +1090,56 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
         return RelationshipStore.createEdge(null, "doc-link", direction, opts);
       }
     });
+  }
+
+  // ─── Edge Click Panel ────────────────────────────────────────────────────────
+
+  /** Opens a panel to edit (type, direction) or delete an existing connection edge. */
+  #showEdgePanel(edgeId, clientX, clientY) {
+    const edge = RelationshipStore.getAll().edges[edgeId];
+    if (!edge) return;
+
+    const panel = document.createElement("div");
+    panel.className  = "mm-search-panel";
+    panel.style.left = `${clientX}px`;
+    panel.style.top  = `${clientY}px`;
+
+    panel.innerHTML = `
+      <div class="mm-panel-title">Edit Connection</div>
+      ${connectionTypePickerHTML()}
+      ${connectionDirectionPickerHTML()}
+      <div class="mm-panel-actions">
+        <button class="mm-btn-confirm">Save</button>
+        <button class="mm-btn-delete"><i class="fa-solid fa-trash-can"></i> Delete</button>
+        <button class="mm-btn-cancel">Cancel</button>
+      </div>
+    `;
+
+    // Pre-select the edge's current values
+    const typeSelect = panel.querySelector('select[name="mm_type"]');
+    if (edge.connectionTypeId) typeSelect.value = edge.connectionTypeId;
+
+    const dirInput = panel.querySelector(`input[name="mm_dir"][value="${edge.direction}"]`);
+    if (dirInput) dirInput.checked = true;
+
+    panel.querySelector(".mm-btn-confirm").addEventListener("click", async () => {
+      const direction        = readSelectedDirection(panel);
+      const connectionTypeId = readSelectedType(panel);
+      await RelationshipStore.updateEdgeConnectionType(edgeId, connectionTypeId);
+      await RelationshipStore.updateEdgeDirection(edgeId, direction);
+      this.#closeFloatingPanels();
+      this.#refreshMap();
+    });
+
+    panel.querySelector(".mm-btn-delete").addEventListener("click", async () => {
+      await RelationshipStore.deleteEdge(edgeId);
+      this.#closeFloatingPanels();
+      this.#refreshMap();
+    });
+
+    panel.querySelector(".mm-btn-cancel").addEventListener("click", () => this.#closeFloatingPanels());
+    this.#appendFloating(panel);
+    bindPanelDismiss(panel);
   }
 
   // ─── Map Refresh ─────────────────────────────────────────────────────────────

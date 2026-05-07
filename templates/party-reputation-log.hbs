@@ -1,0 +1,22 @@
+<div class="ddf-rep-log">
+  <div class="ddf-rep-log-header">
+    <span>{{factionName}} — Reputation Log</span>
+    <span class="ddf-rep-log-current">Current: {{current}} / {{maxValue}}</span>
+  </div>
+  <div class="ddf-rep-log-entries">
+    {{#each entries}}
+      <div class="ddf-rep-log-entry">
+        <span class="ddf-rep-log-delta {{deltaClass}}">{{deltaLabel}}</span>
+        <span class="ddf-rep-log-note">{{#if note}}{{note}}{{else}}<em>No note</em>{{/if}}</span>
+        <span class="ddf-rep-log-time">{{formattedTime}}</span>
+      </div>
+    {{else}}
+      <div class="ddf-rep-log-empty">No entries yet.</div>
+    {{/each}}
+  </div>
+  <div class="ddf-rep-log-actions">
+    <button type="button" data-action="archiveToJournal">
+      <i class="fa-solid fa-book"></i> Archive to Journal…
+    </button>
+  </div>
+</div>

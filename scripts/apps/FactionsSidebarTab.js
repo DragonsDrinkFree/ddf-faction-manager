@@ -4,8 +4,16 @@ import { ProjectStore } from "../data/ProjectStore.js";
 import { RelationshipStore } from "../data/RelationshipStore.js";
 import { MemberStore } from "../data/MemberStore.js";
 import { FactionDetailApp } from "./FactionDetailApp.js";
+import { PartyDetailApp } from "./PartyDetailApp.js";
 import { FolderConfigApp } from "./FolderConfigApp.js";
 import { GlobalRelationshipsApp } from "./GlobalRelationshipsApp.js";
+import {
+  getActiveSandboxPartyId,
+  getMissingSandboxParties,
+  importSandboxParty,
+  syncAllSandboxPartyMembers
+} from "../utils/SandboxIntegration.js";
+import { promptName } from "../utils/AppHelpers.js";
 
 const { HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -30,8 +38,24 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
     }
   };
 
-  /** Faction ID currently being dragged (manual mode). */
+  /** Faction ID currently being dragged. */
   #draggedId = null;
+
+  /** Folder ID currently being dragged. Set when the drag source is a folder header. */
+  #draggedFolderId = null;
+
+  /** Faction IDs whose sub-faction list is collapsed (session-only). */
+  #collapsedFactionIds = new Set();
+
+  /**
+   * Comma-joined sorted list of sandbox party IDs the user has dismissed this
+   * session. The prompt re-fires whenever the current missing-set differs from
+   * this signature — so newly-appeared SCM parties still surface for import.
+   */
+  #sandboxDismissedIds = null;
+
+  /** Set true while the import dialog is open, to prevent duplicates on re-render. */
+  #sandboxPromptOpen = false;
 
   // ─── Context ─────────────────────────────────────────────────────────────────
 
@@ -39,16 +63,29 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
   async _prepareContext(options) {
     const context = await super._prepareContext(options);
 
-    const sortMode    = FolderStore.getSortMode(); // controls unfiled factions
+    const sortMode    = FolderStore.getSortMode();
     const folders     = FolderStore.getFolders();
     const membership  = FolderStore.getMembership();
     const manualOrder = FolderStore.getManualOrder();
 
-    // getHierarchy() returns top-level roots alpha-sorted, each with .children
-    const hierarchyRoots = FactionStore.getHierarchy();
+    const activeSandboxPartyId = getActiveSandboxPartyId();
+    const activeFactionId = activeSandboxPartyId
+      ? Object.values(FactionStore.getAll())
+          .find(f => f.kind === "party" && f.sandboxPartyId === activeSandboxPartyId)?.id ?? null
+      : null;
 
-    // ── Step 1: group top-level factions by folder (preserving alpha order from getHierarchy) ──
-    const folderGroups   = {};
+    const decorate = (f) => ({
+      ...f,
+      isParty:           f.kind === "party",
+      isActiveParty:     f.id   === activeFactionId,
+      childrenCollapsed: this.#collapsedFactionIds.has(f.id),
+      children:          (f.children ?? []).map(decorate)
+    });
+
+    const hierarchyRoots = FactionStore.getHierarchy().map(decorate);
+
+    // Group top-level factions by folder
+    const folderGroups    = {};
     const unfiledFactions = [];
     for (const faction of hierarchyRoots) {
       const folderId = membership[faction.id];
@@ -59,7 +96,7 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
       }
     }
 
-    // ── Step 2: build a helper that re-sorts a list by manual order ──────────
+    // Sort a faction list by manual order (used for folder contents)
     const manualSort = (arr) => {
       const orderMap = new Map(manualOrder.map((id, i) => [id, i]));
       return [...arr].sort((a, b) => {
@@ -69,31 +106,76 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
       });
     };
 
-    // ── Step 3: build sections — each folder uses its own sorting field ───────
-    const sections = [];
-    for (const folder of Object.values(folders).sort((a, b) => a.name.localeCompare(b.name))) {
-      const raw      = folderGroups[folder.id] ?? [];
-      const factions = (folder.sorting ?? "a") === "m" ? manualSort(raw) : raw;
-      sections.push({
-        type:      "folder",
-        id:        folder.id,
-        name:      folder.name,
-        color:     folder.color  ?? "",
-        sorting:   folder.sorting ?? "a",
-        collapsed: folder.collapsed,
-        factions
-      });
+    // Build a recursive folder node (sub-folders inside folders always alpha-sorted)
+    const buildFolderNode = (f) => {
+      const raw = folderGroups[f.id] ?? [];
+      return {
+        type:         "folder",
+        id:           f.id,
+        name:         f.name,
+        color:        f.color   ?? "",
+        sorting:      f.sorting ?? "a",
+        collapsed:    f.collapsed,
+        factions:     (f.sorting ?? "a") === "m" ? manualSort(raw) : [...raw].sort((a, b) => a.name.localeCompare(b.name)),
+        childFolders: Object.values(folders)
+          .filter(cf => (cf.parentFolderId ?? null) === f.id)
+          .sort((a, b) => a.name.localeCompare(b.name))
+          .map(buildFolderNode)
+      };
+    };
+
+    // Top-level folders as section nodes
+    const folderSections = Object.values(folders)
+      .filter(f => (f.parentFolderId ?? null) === null)
+      .map(buildFolderNode);
+
+    // Top-level unfiled factions as individual section nodes
+    const factionSections = unfiledFactions.map(f => ({ type: "faction", ...f }));
+
+    // Sort folders and unfiled factions in their own groups — folders always render first
+    const orderMap = new Map(manualOrder.map((id, i) => [id, i]));
+    const byOrder  = (a, b) => {
+      const ia = orderMap.has(a.id) ? orderMap.get(a.id) : 999999;
+      const ib = orderMap.has(b.id) ? orderMap.get(b.id) : 999999;
+      return ia - ib || a.name.localeCompare(b.name);
+    };
+    const byName = (a, b) => a.name.localeCompare(b.name);
+    const sorter = sortMode === "alpha" ? byName : byOrder;
+
+    const sortedFolders  = folderSections.sort(sorter);
+    const sortedFactions = factionSections.sort(sorter);
+
+    // Hoist active sandbox party to top of unfiled list
+    if (activeFactionId) {
+      const idx = sortedFactions.findIndex(s => s.id === activeFactionId);
+      if (idx > 0) sortedFactions.unshift(...sortedFactions.splice(idx, 1));
     }
 
-    // Unfiled factions use the global sidebar sort toggle
-    const unfiledSorted = sortMode === "manual" ? manualSort(unfiledFactions) : unfiledFactions;
-    sections.push({ type: "unfiled", factions: unfiledSorted });
+    const sections = [...sortedFolders, ...sortedFactions];
 
     context.sections   = sections;
     context.sortMode   = sortMode;
     context.hasFolders = Object.keys(folders).length > 0;
     context.selectedId = null;
     return context;
+  }
+
+  // ─── Activation Lifecycle ────────────────────────────────────────────────────
+  // V14's AbstractSidebarTab may call any of these when the user activates the
+  // tab. Override all candidates and force a re-render so the sandbox-import
+  // check + active-party styling refresh on every click.
+
+  /** @override */
+  _onActivate(...args) {
+    super._onActivate?.(...args);
+    if (this.rendered) this.render({ force: true });
+  }
+
+  /** Possible alternate V14 lifecycle name — harmless if not invoked. */
+  activate(...args) {
+    const result = super.activate?.(...args);
+    if (this.rendered) this.render({ force: true });
+    return result;
   }
 
   // ─── Render Hook ─────────────────────────────────────────────────────────────
@@ -105,9 +187,9 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
 
     // ── Header buttons ───────────────────────────────────────────────────────
     el.querySelector(".ddf-create-faction")?.addEventListener("click", async () => {
-      const name = await this.#promptName("New Faction", "Name");
-      if (!name) return;
-      await FactionStore.create(name, null);
+      const result = await this.#promptCreateOrganization();
+      if (!result) return;
+      await FactionStore.create(result.name, null, { kind: result.kind });
       this.render();
     });
 
@@ -146,7 +228,10 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
     el.querySelectorAll("[data-action='selectFaction']").forEach(row => {
       row.addEventListener("click", () => {
         const id = row.closest("[data-faction-id]")?.dataset.factionId;
-        if (id) FactionDetailApp.show(id);
+        if (!id) return;
+        const record = FactionStore.getAll()[id];
+        if (record?.kind === "party") PartyDetailApp.show(id);
+        else                          FactionDetailApp.show(id);
       });
     });
 
@@ -157,76 +242,26 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
         const parentId = btn.closest("[data-faction-id]")?.dataset.factionId;
         if (!parentId) return;
         const parentName = FactionStore.getAll()[parentId]?.name ?? "faction";
-        const name = await this.#promptName(
-          `New Sub-Faction (${parentName})`,
-          "Name"
-        );
+        const name = await promptName(`New Sub-Faction (${parentName})`, "Name");
         if (!name) return;
         await FactionStore.create(name, parentId);
         this.render();
       });
     });
 
-    // ── Delete faction ────────────────────────────────────────────────────────
-    el.querySelectorAll("[data-action='deleteFaction']").forEach(btn => {
-      btn.addEventListener("click", async (e) => {
+    // ── Sub-faction collapse/expand ───────────────────────────────────────────
+    el.querySelectorAll(".faction-collapse-icon").forEach(icon => {
+      icon.addEventListener("click", (e) => {
         e.stopPropagation();
-        const id = btn.closest("[data-faction-id]")?.dataset.factionId;
+        const id = icon.closest("[data-faction-id]")?.dataset.factionId;
         if (!id) return;
-        const faction  = FactionStore.getAll()[id];
-        if (!faction) return;
-
-        const children    = Object.values(FactionStore.getAll()).filter(f => f.parentId === id);
-        const hasChildren = children.length > 0;
-        let mode = "promote";
-
-        if (hasChildren) {
-          const n      = children.length;
-          const choice = await foundry.applications.api.DialogV2.wait({
-            window: { title: "Delete Faction" },
-            content: `<p>Delete <strong>${faction.name}</strong>?</p>
-              <p><strong>${n}</strong> sub-faction${n !== 1 ? "s" : ""} will be affected.</p>`,
-            buttons: [
-              { label: "Delete Sub-factions", action: "cascade", icon: "fa-solid fa-trash" },
-              { label: "Promote Sub-factions", action: "promote", icon: "fa-solid fa-arrow-up", default: true },
-              { label: "Cancel", action: "cancel" }
-            ],
-            rejectClose: false
-          }).catch(() => "cancel");
-
-          if (!choice || choice === "cancel") return;
-          mode = choice;
-        } else {
-          const confirmed = await foundry.applications.api.DialogV2.confirm({
-            window: { title: "Delete Faction" },
-            content: `<p>Delete <strong>${faction.name}</strong>? This will also delete the faction's journal page and all projects.</p>`
-          });
-          if (!confirmed) return;
-        }
-
-        if (mode === "cascade") {
-          const deleteRecursive = async (factionId) => {
-            const subs = Object.values(FactionStore.getAll()).filter(f => f.parentId === factionId);
-            for (const sub of subs) await deleteRecursive(sub.id);
-            await ProjectStore.deleteForFaction(factionId);
-            await RelationshipStore.cleanupFaction(factionId);
-            await MemberStore.cleanupFaction(factionId);
-            await FactionStore.delete(factionId);
-          };
-          await deleteRecursive(id);
-        } else {
-          for (const child of Object.values(FactionStore.getAll()).filter(f => f.parentId === id)) {
-            await FactionStore.update(child.id, { parentId: null });
-          }
-          await ProjectStore.deleteForFaction(id);
-          await RelationshipStore.cleanupFaction(id);
-          await MemberStore.cleanupFaction(id);
-          await FactionStore.delete(id);
-        }
-
+        if (this.#collapsedFactionIds.has(id)) this.#collapsedFactionIds.delete(id);
+        else                                    this.#collapsedFactionIds.add(id);
         this.render();
       });
     });
+
+    // ── Delete faction (wired up via context menu now — no inline button) ─────
 
     // ── Folder collapse/expand ────────────────────────────────────────────────
     el.querySelectorAll(".ddf-folder-header").forEach(header => {
@@ -250,10 +285,24 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
         const folderId = btn.closest(".ddf-folder-section[data-folder-id]")?.dataset.folderId;
         if (!folderId) return;
         const folderName = FolderStore.getFolders()[folderId]?.name ?? "folder";
-        const name = await this.#promptName(`New Faction in ${folderName}`, "Name");
+        const name = await promptName(`New Faction in ${folderName}`, "Name");
         if (!name) return;
         const faction = await FactionStore.create(name, null);
         await FolderStore.setFactionFolder(faction.id, folderId);
+        this.render();
+      });
+    });
+
+    // ── Create sub-folder ─────────────────────────────────────────────────────
+    el.querySelectorAll("[data-action='createSubFolder']").forEach(btn => {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const folderId = btn.closest(".ddf-folder-section[data-folder-id]")?.dataset.folderId;
+        if (!folderId) return;
+        const folderName = FolderStore.getFolders()[folderId]?.name ?? "folder";
+        const name = await promptName(`New Sub-folder in "${folderName}"`, "Name");
+        if (!name) return;
+        await FolderStore.createFolder(name, { parentFolderId: folderId });
         this.render();
       });
     });
@@ -268,67 +317,372 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
       });
     });
 
-    // ── Folder delete ─────────────────────────────────────────────────────────
-    el.querySelectorAll("[data-action='deleteFolder']").forEach(btn => {
-      btn.addEventListener("click", async (e) => {
-        e.stopPropagation();
-        const folderId = btn.closest(".ddf-folder-section[data-folder-id]")?.dataset.folderId;
-        if (!folderId) return;
-        const folder    = FolderStore.getFolders()[folderId];
-        const confirmed = await foundry.applications.api.DialogV2.confirm({
-          window: { title: "Delete Folder" },
-          content: `<p>Delete folder <strong>${folder?.name ?? ""}</strong>? Factions inside will become unfiled.</p>`
-        });
-        if (!confirmed) return;
-        await FolderStore.deleteFolder(folderId);
-        this.render();
-      });
-    });
+    // ── Folder delete (wired up via context menu now — no inline button) ──────
+
+    // ── Right-click context menus on folders + factions ───────────────────────
+    this.#setupContextMenus(el);
 
     // ── Drag-drop: always set up — each section controls its own draggability ──
     this.#setupDragDrop(el);
+
+    // ── Sandbox Campaign Manager sync ─────────────────────────────────────────
+    // Reconcile rosters of any sandbox-linked parties, then prompt to import
+    // any sandbox parties that don't yet exist in our store.
+    this.#runSandboxCheck();
+  }
+
+  /**
+   * Fire-and-forget: sync existing sandbox-linked parties, then offer to
+   * import any new ones. Silent when SCM is unavailable or there's nothing to do.
+   */
+  async #runSandboxCheck() {
+    try {
+      await syncAllSandboxPartyMembers();
+      if (this.#sandboxPromptOpen) return;
+      const missing = getMissingSandboxParties();
+      if (!missing.length) return;
+      const signature = missing.map(p => p.id).sort().join(",");
+      if (this.#sandboxDismissedIds === signature) return;
+      this.#showSandboxImportDialog(missing, signature);
+    } catch (err) {
+      console.warn("ddf-faction-manager | Sandbox sync failed", err);
+    }
+  }
+
+  #showSandboxImportDialog(missingParties, signature) {
+    const rows = missingParties.map(p => {
+      const memberCount = Array.isArray(p.members) ? p.members.length : 0;
+      const memberWord  = memberCount === 1 ? "member" : "members";
+      return `
+        <label class="ddf-import-party-row">
+          <input type="checkbox" name="sbp_${p.id}" value="${p.id}" checked />
+          <strong>${foundry.utils.escapeHTML(p.name)}</strong>
+          <span class="hint">— ${memberCount} ${memberWord}</span>
+        </label>`;
+    }).join("");
+
+    this.#sandboxPromptOpen = true;
+    foundry.applications.api.DialogV2.wait({
+      window: { title: "Import Sandbox Parties" },
+      content: `
+        <div class="standard-form">
+          <p>Sandbox Campaign Manager has parties that don't exist in your faction manager. Select which to import — members will be auto-linked to actors.</p>
+          <div class="ddf-import-party-list">${rows}</div>
+        </div>`,
+      buttons: [
+        {
+          label: "Import Selected",
+          action: "import",
+          icon: "fa-solid fa-download",
+          default: true,
+          callback: (_event, button) => {
+            const ids = [];
+            button.form.querySelectorAll('input[type="checkbox"]:checked').forEach(cb => ids.push(cb.value));
+            return ids;
+          }
+        },
+        { label: "Skip", action: "skip" }
+      ],
+      rejectClose: false
+    }).then(async (result) => {
+      this.#sandboxPromptOpen = false;
+      if (!Array.isArray(result) || !result.length) {
+        this.#sandboxDismissedIds = signature;
+        return;
+      }
+      const byId = new Map(missingParties.map(p => [p.id, p]));
+      for (const id of result) {
+        const sandboxParty = byId.get(id);
+        if (sandboxParty) await importSandboxParty(sandboxParty);
+      }
+      this.render();
+    }).catch(() => {
+      this.#sandboxPromptOpen   = false;
+      this.#sandboxDismissedIds = signature;
+    });
   }
 
   // ─── Drag-Drop ───────────────────────────────────────────────────────────────
 
+  /**
+   * Returns the set of folder IDs that descend from `folderId` (children, grandchildren, …),
+   * NOT including `folderId` itself. Used to prevent cycles when nesting folders.
+   */
+  #getFolderDescendants(folderId) {
+    const folders = FolderStore.getFolders();
+    const result = new Set();
+    const walk = (parentId) => {
+      for (const f of Object.values(folders)) {
+        if ((f.parentFolderId ?? null) === parentId && !result.has(f.id)) {
+          result.add(f.id);
+          walk(f.id);
+        }
+      }
+    };
+    walk(folderId);
+    return result;
+  }
+
+  /** True when a drop of the currently-dragged folder onto `targetFolderId` would create a cycle. */
+  #wouldCreateFolderCycle(targetFolderId) {
+    if (!this.#draggedFolderId) return false;
+    if (this.#draggedFolderId === targetFolderId) return true;
+    return this.#getFolderDescendants(this.#draggedFolderId).has(targetFolderId);
+  }
+
+  // ─── Context Menus ───────────────────────────────────────────────────────────
+
+  #setupContextMenus(el) {
+    const ContextMenu = foundry.applications.ux.ContextMenu;
+
+    // fixed: true renders via popover on document.body — escapes sidebar overflow clipping
+    new ContextMenu(el, ".ddf-folder-header", this.#folderMenuEntries(), { jQuery: false, fixed: true });
+    new ContextMenu(el, ".faction-item",       this.#factionMenuEntries(), { jQuery: false, fixed: true });
+  }
+
+  #folderMenuEntries() {
+    const folderIdFrom = (header) =>
+      header.closest(".ddf-folder-section[data-folder-id]")?.dataset.folderId;
+
+    return [
+      {
+        name: "Edit Folder",
+        icon: '<i class="fa-solid fa-pen-to-square"></i>',
+        callback: (header) => {
+          const folderId = folderIdFrom(header);
+          if (folderId) FolderConfigApp.openEdit(folderId, () => this.render());
+        }
+      },
+      {
+        name: "Create Faction",
+        icon: '<i class="fa-solid fa-plus"></i>',
+        callback: async (header) => {
+          const folderId = folderIdFrom(header);
+          if (!folderId) return;
+          const folderName = FolderStore.getFolders()[folderId]?.name ?? "folder";
+          const name = await promptName(`New Faction in ${folderName}`, "Name");
+          if (!name) return;
+          const faction = await FactionStore.create(name, null);
+          await FolderStore.setFactionFolder(faction.id, folderId);
+          this.render();
+        }
+      },
+      {
+        name: "Remove Folder",
+        icon: '<i class="fa-solid fa-folder-minus"></i>',
+        callback: async (header) => {
+          const folderId = folderIdFrom(header);
+          if (!folderId) return;
+          const folder = FolderStore.getFolders()[folderId];
+          if (!folder) return;
+          const confirmed = await foundry.applications.api.DialogV2.confirm({
+            window: { title: "Remove Folder" },
+            content: `<p>Remove folder <strong>${foundry.utils.escapeHTML(folder.name)}</strong>?</p>
+              <p>Its contents will be promoted to ${folder.parentFolderId ? "the parent folder" : "the root level"}.</p>`
+          });
+          if (!confirmed) return;
+          await FolderStore.deleteFolder(folderId);
+          this.render();
+        }
+      },
+      {
+        name: "Delete All",
+        icon: '<i class="fa-solid fa-trash"></i>',
+        callback: async (header) => {
+          const folderId = folderIdFrom(header);
+          if (!folderId) return;
+          const folder = FolderStore.getFolders()[folderId];
+          if (!folder) return;
+          const factionIds = this.#getAllFactionIdsInFolderTree(folderId);
+          const subFolderIds = this.#getAllSubFolderIds(folderId);
+          const fc = factionIds.length, sc = subFolderIds.length;
+          const confirmed = await foundry.applications.api.DialogV2.confirm({
+            window: { title: "Delete Folder + All Contents" },
+            content: `
+              <p>Permanently delete folder <strong>${foundry.utils.escapeHTML(folder.name)}</strong> and everything inside?</p>
+              <ul>
+                <li><strong>${fc}</strong> faction${fc !== 1 ? "s" : ""} (with all journal pages, projects, members, and connections)</li>
+                <li><strong>${sc}</strong> sub-folder${sc !== 1 ? "s" : ""}</li>
+              </ul>
+              <p><strong>This cannot be undone.</strong></p>`
+          });
+          if (!confirmed) return;
+          await this.#deleteFolderAndContents(folderId);
+          this.render();
+        }
+      }
+    ];
+  }
+
+  #factionMenuEntries() {
+    return [
+      {
+        name: "Create Sub-Faction",
+        icon: '<i class="fa-solid fa-plus"></i>',
+        condition: (item) => {
+          const faction = FactionStore.getAll()[item.dataset.factionId];
+          return faction && faction.kind !== "party";
+        },
+        callback: async (item) => {
+          const parentId = item.dataset.factionId;
+          if (!parentId) return;
+          const parentName = FactionStore.getAll()[parentId]?.name ?? "faction";
+          const name = await promptName(`New Sub-Faction (${parentName})`, "Name");
+          if (!name) return;
+          await FactionStore.create(name, parentId);
+          this.render();
+        }
+      },
+      {
+        name: "Promote Faction",
+        icon: '<i class="fa-solid fa-arrow-up"></i>',
+        condition: (item) => !!FactionStore.getAll()[item.dataset.factionId]?.parentId,
+        callback: async (item) => {
+          const factionId = item.dataset.factionId;
+          if (!factionId) return;
+          await FactionStore.update(factionId, { parentId: null });
+          this.render();
+        }
+      },
+      {
+        name: "Delete",
+        icon: '<i class="fa-solid fa-trash"></i>',
+        callback: async (item) => {
+          const factionId = item.dataset.factionId;
+          if (factionId) await this.#deleteFactionWithConfirm(factionId);
+        }
+      }
+    ];
+  }
+
+  // ─── Recursive Delete Helpers ────────────────────────────────────────────────
+
+  /** Returns descendant folder IDs (excluding `folderId` itself). */
+  #getAllSubFolderIds(folderId) {
+    return [...this.#getFolderDescendants(folderId)];
+  }
+
+  /** Returns every faction ID filed in `folderId` or any of its descendant folders. */
+  #getAllFactionIdsInFolderTree(folderId) {
+    const folderIds = new Set([folderId, ...this.#getAllSubFolderIds(folderId)]);
+    const membership = FolderStore.getMembership();
+    const result = [];
+    for (const [factionId, fid] of Object.entries(membership)) {
+      if (folderIds.has(fid)) result.push(factionId);
+    }
+    return result;
+  }
+
+  /**
+   * Recursively delete a folder, every faction it contains (with their sub-factions
+   * and per-faction store cleanup), and every descendant folder.
+   */
+  async #deleteFolderAndContents(folderId) {
+    const subFolders = Object.values(FolderStore.getFolders())
+      .filter(f => (f.parentFolderId ?? null) === folderId);
+    for (const sub of subFolders) {
+      await this.#deleteFolderAndContents(sub.id);
+    }
+    const factionsInFolder = Object.entries(FolderStore.getMembership())
+      .filter(([_, fid]) => fid === folderId)
+      .map(([fid]) => fid);
+    for (const fid of factionsInFolder) {
+      await this.#deleteFactionDeep(fid);
+    }
+    await FolderStore.deleteFolder(folderId);
+  }
+
+  /** Cascade-delete a faction with all its sub-factions and per-faction store cleanup. */
+  async #deleteFactionDeep(factionId) {
+    const subs = Object.values(FactionStore.getAll()).filter(f => f.parentId === factionId);
+    for (const sub of subs) await this.#deleteFactionDeep(sub.id);
+    await ProjectStore.deleteForFaction(factionId);
+    await RelationshipStore.cleanupFaction(factionId);
+    await MemberStore.cleanupFaction(factionId);
+    await FactionStore.delete(factionId);
+  }
+
+  /**
+   * Confirm-and-delete one faction. When the faction has sub-factions the user
+   * is offered Cascade / Promote / Cancel; otherwise a plain confirm.
+   */
+  async #deleteFactionWithConfirm(factionId) {
+    const faction = FactionStore.getAll()[factionId];
+    if (!faction) return;
+
+    const children = Object.values(FactionStore.getAll()).filter(f => f.parentId === factionId);
+    let mode = "promote";
+
+    if (children.length) {
+      const n = children.length;
+      const choice = await foundry.applications.api.DialogV2.wait({
+        window: { title: "Delete Faction" },
+        content: `<p>Delete <strong>${faction.name}</strong>?</p>
+          <p><strong>${n}</strong> sub-faction${n !== 1 ? "s" : ""} will be affected.</p>`,
+        buttons: [
+          { label: "Delete Sub-factions", action: "cascade", icon: "fa-solid fa-trash" },
+          { label: "Promote Sub-factions", action: "promote", icon: "fa-solid fa-arrow-up", default: true },
+          { label: "Cancel", action: "cancel" }
+        ],
+        rejectClose: false
+      }).catch(() => "cancel");
+      if (!choice || choice === "cancel") return;
+      mode = choice;
+    } else {
+      const confirmed = await foundry.applications.api.DialogV2.confirm({
+        window: { title: "Delete Faction" },
+        content: `<p>Delete <strong>${faction.name}</strong>? This will also delete the faction's journal page and all projects.</p>`
+      });
+      if (!confirmed) return;
+    }
+
+    if (mode === "cascade") {
+      await this.#deleteFactionDeep(factionId);
+    } else {
+      for (const child of Object.values(FactionStore.getAll()).filter(f => f.parentId === factionId)) {
+        await FactionStore.update(child.id, { parentId: null });
+      }
+      await ProjectStore.deleteForFaction(factionId);
+      await RelationshipStore.cleanupFaction(factionId);
+      await MemberStore.cleanupFaction(factionId);
+      await FactionStore.delete(factionId);
+    }
+
+    this.render();
+  }
+
+  /** Clear all transient drag-feedback classes from the sidebar tree. */
+  #clearDragFeedback(el) {
+    el.querySelectorAll(".ddf-drop-above, .ddf-drop-below, .ddf-drag-over, .ddf-drag-source").forEach(x => {
+      x.classList.remove("ddf-drop-above", "ddf-drop-below", "ddf-drag-over", "ddf-drag-source");
+    });
+  }
+
   #setupDragDrop(el) {
-    const folders    = FolderStore.getFolders();
-    const globalSort = FolderStore.getSortMode();
-
-    // Determine which top-level items are draggable based on their section's sort mode.
-    // – Folder contents: draggable when folder.sorting === "m"
-    // – Unfiled: draggable when global sort mode === "manual"
-    const draggableItems = [];
-    el.querySelectorAll(".ddf-folder-contents > .faction-item").forEach(item => {
-      const folderId = item.closest("ol[data-folder-id]")?.dataset.folderId;
-      if (folderId && (folders[folderId]?.sorting ?? "a") === "m") draggableItems.push(item);
-    });
-    el.querySelectorAll(".ddf-unfiled-section > .faction-item").forEach(item => {
-      if (globalSort === "manual") draggableItems.push(item);
-    });
-
-    draggableItems.forEach(item => {
+    // ── Faction items: always draggable so users can move them between folders ──
+    // (Manual reorder still only takes effect when the section's sort mode is "m";
+    //  in alpha mode the manual order is updated but ignored at render time.)
+    el.querySelectorAll(".faction-item[data-faction-id]").forEach(item => {
       item.setAttribute("draggable", "true");
 
       item.addEventListener("dragstart", (e) => {
-        this.#draggedId = item.dataset.factionId;
+        e.stopPropagation();
+        this.#draggedId       = item.dataset.factionId;
+        this.#draggedFolderId = null;
         e.dataTransfer.effectAllowed = "move";
         e.dataTransfer.setData("text/plain", this.#draggedId);
-        // Slight delay so the browser grabs the un-dimmed element as drag image
         setTimeout(() => item.classList.add("ddf-drag-source"), 0);
       });
 
       item.addEventListener("dragend", () => {
         this.#draggedId = null;
-        item.classList.remove("ddf-drag-source");
-        el.querySelectorAll(".ddf-drop-above, .ddf-drop-below, .ddf-drag-over").forEach(x => {
-          x.classList.remove("ddf-drop-above", "ddf-drop-below", "ddf-drag-over");
-        });
+        this.#clearDragFeedback(el);
       });
 
       item.addEventListener("dragover", (e) => {
         if (!this.#draggedId || this.#draggedId === item.dataset.factionId) return;
         e.preventDefault();
+        e.stopPropagation();
         e.dataTransfer.dropEffect = "move";
         el.querySelectorAll(".ddf-drop-above, .ddf-drop-below").forEach(x => {
           x.classList.remove("ddf-drop-above", "ddf-drop-below");
@@ -342,8 +696,9 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
       });
 
       item.addEventListener("drop", async (e) => {
-        e.preventDefault();
         if (!this.#draggedId || this.#draggedId === item.dataset.factionId) return;
+        e.preventDefault();
+        e.stopPropagation();
         const targetId     = item.dataset.factionId;
         const sourceId     = this.#draggedId;
         const rect         = item.getBoundingClientRect();
@@ -354,49 +709,116 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
       });
     });
 
-    // Drop onto folder headers (moves to that folder)
-    el.querySelectorAll(".ddf-folder-header").forEach(header => {
-      const folderId = header.closest(".ddf-folder-section[data-folder-id]")?.dataset.folderId;
-      if (!folderId) return;
+    // ── Folder sections: draggable from the header; can be nested or un-nested ──
+    el.querySelectorAll(".ddf-folder-section[data-folder-id]").forEach(section => {
+      const folderId = section.dataset.folderId;
+      const header   = section.querySelector(".ddf-folder-header");
+      if (!folderId || !header) return;
 
-      header.addEventListener("dragover", (e) => {
-        if (!this.#draggedId) return;
-        e.preventDefault();
-        header.classList.add("ddf-drag-over");
+      header.setAttribute("draggable", "true");
+
+      header.addEventListener("dragstart", (e) => {
+        // Don't bubble — child folders' headers would otherwise also fire
+        e.stopPropagation();
+        this.#draggedFolderId = folderId;
+        this.#draggedId       = null;
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", `folder:${folderId}`);
+        setTimeout(() => section.classList.add("ddf-drag-source"), 0);
       });
 
-      header.addEventListener("dragleave", () => {
+      header.addEventListener("dragend", () => {
+        this.#draggedFolderId = null;
+        this.#clearDragFeedback(el);
+      });
+
+      header.addEventListener("dragover", (e) => {
+        if (this.#draggedFolderId) {
+          if (this.#wouldCreateFolderCycle(folderId)) return;
+        } else if (!this.#draggedId) {
+          return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        el.querySelectorAll(".ddf-drop-above, .ddf-drop-below, .ddf-drag-over").forEach(x => {
+          x.classList.remove("ddf-drop-above", "ddf-drop-below", "ddf-drag-over");
+        });
+        if (this.#draggedFolderId) {
+          // Position-sensitive: top/bottom edge = reorder folders, centre = nest inside
+          const rect = header.getBoundingClientRect();
+          const pct  = (e.clientY - rect.top) / rect.height;
+          if      (pct < 0.3) section.classList.add("ddf-drop-above");
+          else if (pct > 0.7) section.classList.add("ddf-drop-below");
+          else                header.classList.add("ddf-drag-over");
+        } else {
+          // Faction over folder always shows nest indicator
+          header.classList.add("ddf-drag-over");
+        }
+      });
+
+      header.addEventListener("dragleave", (e) => {
         header.classList.remove("ddf-drag-over");
+        if (!header.contains(e.relatedTarget)) {
+          section.classList.remove("ddf-drop-above", "ddf-drop-below");
+        }
       });
 
       header.addEventListener("drop", async (e) => {
         e.preventDefault();
-        if (!this.#draggedId) return;
+        e.stopPropagation();
+        const dropAbove = section.classList.contains("ddf-drop-above");
+        const dropBelow = section.classList.contains("ddf-drop-below");
         header.classList.remove("ddf-drag-over");
-        await FolderStore.setFactionFolder(this.#draggedId, folderId);
-        this.render();
+        section.classList.remove("ddf-drop-above", "ddf-drop-below");
+
+        if (this.#draggedFolderId) {
+          if (this.#wouldCreateFolderCycle(folderId)) return;
+          if (this.#draggedFolderId === folderId) return;
+          if (dropAbove || dropBelow) {
+            // Reorder at root level (un-nest dragged folder first)
+            await FolderStore.setFolderParent(this.#draggedFolderId, null);
+            await this.#reorderTopLevel(this.#draggedFolderId, folderId, dropAbove);
+          } else {
+            await FolderStore.setFolderParent(this.#draggedFolderId, folderId);
+            this.render();
+          }
+          return;
+        }
+        if (this.#draggedId) {
+          // Faction dropped on folder always moves into it
+          await FolderStore.setFactionFolder(this.#draggedId, folderId);
+          this.render();
+        }
       });
     });
 
-    // Drop onto unfiled section empty space (removes from any folder)
-    const unfiledSection = el.querySelector(".ddf-unfiled-section");
-    if (unfiledSection) {
-      unfiledSection.addEventListener("dragover", (e) => {
-        if (!this.#draggedId) return;
+    // Faction-to-faction drops within unfiled are handled by the <li> dragover/drop handlers above.
+
+    // ── Sidebar list itself: fallback drop zone for empty space ──
+    // Lets users drop a faction OR folder onto the bare sidebar to un-file/un-nest,
+    // even when no unfiled section is rendered (e.g. all factions are in folders).
+    const sidebarList = el.querySelector(".ddf-sidebar-list");
+    if (sidebarList) {
+      sidebarList.addEventListener("dragover", (e) => {
+        if (!this.#draggedId && !this.#draggedFolderId) return;
         e.preventDefault();
-        unfiledSection.classList.add("ddf-drag-over");
       });
 
-      unfiledSection.addEventListener("dragleave", () => {
-        unfiledSection.classList.remove("ddf-drag-over");
-      });
-
-      unfiledSection.addEventListener("drop", async (e) => {
+      // Child handlers (faction-item, folder-header, unfiled-section) call
+      // stopPropagation, so this listener only fires when the drop lands on
+      // bare sidebar space outside any specific drop target.
+      sidebarList.addEventListener("drop", async (e) => {
         e.preventDefault();
-        if (!this.#draggedId) return;
-        unfiledSection.classList.remove("ddf-drag-over");
-        await FolderStore.setFactionFolder(this.#draggedId, null);
-        this.render();
+
+        if (this.#draggedFolderId) {
+          await FolderStore.setFolderParent(this.#draggedFolderId, null);
+          this.render();
+          return;
+        }
+        if (this.#draggedId) {
+          await FolderStore.setFactionFolder(this.#draggedId, null);
+          this.render();
+        }
       });
     }
   }
@@ -444,24 +866,67 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
     this.render();
   }
 
+  /**
+   * Reorders the unified top-level manual order (folders + unfiled factions).
+   * Ensures both root folder IDs and top-level faction IDs are present in the array,
+   * then splices `sourceId` before or after `targetId`.
+   */
+  async #reorderTopLevel(sourceId, targetId, insertBefore) {
+    const allFactions = FactionStore.getAll();
+    const folders     = FolderStore.getFolders();
+    const membership  = FolderStore.getMembership();
+
+    const rootFolderIds  = Object.keys(folders).filter(id => (folders[id].parentFolderId ?? null) === null);
+    const topFactionIds  = Object.keys(allFactions).filter(id => {
+      const f = allFactions[id];
+      return (!f.parentId || !allFactions[f.parentId]) && !membership[id];
+    });
+
+    let order = [...FolderStore.getManualOrder()];
+    for (const id of [...rootFolderIds, ...topFactionIds]) {
+      if (!order.includes(id)) order.push(id);
+    }
+
+    order = order.filter(id => id !== sourceId);
+    const targetIdx = order.indexOf(targetId);
+    if (targetIdx === -1) order.push(sourceId);
+    else order.splice(insertBefore ? targetIdx : targetIdx + 1, 0, sourceId);
+
+    await FolderStore.setManualOrder(order);
+    this.render();
+  }
+
   // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-  #promptName(title, label) {
+  #promptCreateOrganization() {
     return new Promise(resolve => {
       foundry.applications.api.DialogV2.prompt({
-        window: { title },
+        window: { title: "New Organization" },
         content: `
           <div class="standard-form">
             <div class="form-group">
-              <label>${label}</label>
+              <label>Type</label>
               <div class="form-fields">
-                <input type="text" name="name" autofocus placeholder="${label}…" />
+                <select name="kind">
+                  <option value="faction" selected>Faction</option>
+                  <option value="party">Adventuring Party</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Name</label>
+              <div class="form-fields">
+                <input type="text" name="name" autofocus placeholder="Name…" />
               </div>
             </div>
           </div>`,
         ok: {
           label: "Create",
-          callback: (_event, button) => resolve(button.form.elements.name.value.trim() || null)
+          callback: (_event, button) => {
+            const name = button.form.elements.name.value.trim();
+            const kind = button.form.elements.kind.value;
+            resolve(name ? { name, kind } : null);
+          }
         },
         rejectClose: false
       }).catch(() => resolve(null));

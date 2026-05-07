@@ -5,14 +5,3 @@
 - Look for obvious duplicated code that could be simplified into single functions 
 - Look For obvious bugs.
 
-# Areas of focus
-
-## Faction Sheets
-- Nothing specific here, General Principals only
-
-
-## Faction Relationship Map
-
-- Node behavior:
-- - We have Faction Nodes, and Document nodes. These can probably gain some unified behavior/code merging to clean things up.
-- - Unique behaviors should still exist, but they should have the same general principals of selection/Logic/Context menues.
