@@ -229,6 +229,22 @@
   outline-offset: -2px;
 }
 
+#ddfFactions .ddf-folder-section.ddf-drop-above {
+  box-shadow: inset 0 2px 0 0 var(--color-border-light-primary);
+}
+
+#ddfFactions .ddf-folder-section.ddf-drop-below {
+  box-shadow: inset 0 -2px 0 0 var(--color-border-light-primary);
+}
+
+#ddfFactions .ddf-unfiled-section.ddf-drop-above {
+  box-shadow: inset 0 2px 0 0 var(--color-border-light-primary);
+}
+
+#ddfFactions .ddf-unfiled-section.ddf-drop-below {
+  box-shadow: inset 0 -2px 0 0 var(--color-border-light-primary);
+}
+
 #ddfFactions .ddf-unfiled-section.ddf-drag-over {
   background: color-mix(in srgb, var(--color-bg-btn, #4b5ea8) 15%, transparent);
   outline: 2px dashed var(--color-border-light-primary);

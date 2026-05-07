@@ -1,4 +1,4 @@
-<li class="faction-item {{#if (eq faction.id ../selectedId)}}selected{{/if}}{{#if faction.isParty}} is-party{{/if}}{{#if faction.isActiveParty}} is-active-party{{/if}}" data-faction-id="{{faction.id}}">
+<li class="faction-item {{#if (eq faction.id ../selectedId)}}selected{{/if}}{{#if faction.isParty}} is-party{{/if}}{{#if faction.isActiveParty}} is-active-party{{/if}}{{#if faction.childrenCollapsed}} children-collapsed{{/if}}" data-faction-id="{{faction.id}}">
   <div class="faction-item-row" data-action="selectFaction" data-faction-id="{{faction.id}}">
     {{#if faction.children.length}}
       <i class="fa-solid fa-chevron-right faction-collapse-icon"></i>
@@ -18,10 +18,12 @@
     </div>
   </div>
   {{#if faction.children.length}}
-    <ol class="faction-children">
-      {{#each faction.children}}
-        {{> ddf-faction-item faction=this selectedId=../selectedId}}
-      {{/each}}
-    </ol>
+    {{#unless faction.childrenCollapsed}}
+      <ol class="faction-children">
+        {{#each faction.children}}
+          {{> ddf-faction-item faction=this selectedId=../selectedId}}
+        {{/each}}
+      </ol>
+    {{/unless}}
   {{/if}}
 </li>

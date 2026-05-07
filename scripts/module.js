@@ -72,8 +72,7 @@ Hooks.once("init", async () => {
     default: JSON.stringify([
       { id: "influence",  name: "Influence",  default: 1 },
       { id: "wealth",     name: "Wealth",     default: 1 },
-      { id: "membership", name: "Membership", default: 1 },
-      { id: "location",   name: "Location",   default: 1 }
+      { id: "membership", name: "Membership", default: 1 }
     ])
   });
 
@@ -148,7 +147,8 @@ Hooks.once("init", async () => {
   }
 
   // ── Sidebar tab ───────────────────────────────────────────────────────────────
-  Sidebar.TABS.ddfFactions = {
+  const SidebarClass = foundry.applications.sidebar.Sidebar;
+  SidebarClass.TABS.ddfFactions = {
     tooltip: "Factions",
     icon:    "fa-solid fa-shield-halved",
     gmOnly:  true
@@ -157,16 +157,16 @@ Hooks.once("init", async () => {
 
   // Reorder tabs so Factions appears between Journal and Roll Tables.
   // JS objects preserve insertion order, so we clear and re-insert all entries.
-  const tabSnapshot = { ...Sidebar.TABS };
-  for (const key of Object.keys(Sidebar.TABS)) delete Sidebar.TABS[key];
+  const tabSnapshot = { ...SidebarClass.TABS };
+  for (const key of Object.keys(SidebarClass.TABS)) delete SidebarClass.TABS[key];
   for (const [key, val] of Object.entries(tabSnapshot)) {
     if (key === "ddfFactions") continue;        // skip — we'll place it manually
-    Sidebar.TABS[key] = val;
-    if (key === "journal") Sidebar.TABS.ddfFactions = tabSnapshot.ddfFactions;
+    SidebarClass.TABS[key] = val;
+    if (key === "journal") SidebarClass.TABS.ddfFactions = tabSnapshot.ddfFactions;
   }
 
   // ── Templates ─────────────────────────────────────────────────────────────────
-  await loadTemplates([
+  await foundry.applications.handlebars.loadTemplates([
     `modules/${MODULE_ID}/templates/sidebar-tab.hbs`,
     `modules/${MODULE_ID}/templates/faction-detail.hbs`,
     `modules/${MODULE_ID}/templates/party-detail.hbs`,

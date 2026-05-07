@@ -44,6 +44,9 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
   /** Folder ID currently being dragged. Set when the drag source is a folder header. */
   #draggedFolderId = null;
 
+  /** Faction IDs whose sub-faction list is collapsed (session-only). */
+  #collapsedFactionIds = new Set();
+
   /**
    * Comma-joined sorted list of sandbox party IDs the user has dismissed this
    * session. The prompt re-fires whenever the current missing-set differs from
@@ -60,31 +63,29 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
   async _prepareContext(options) {
     const context = await super._prepareContext(options);
 
-    const sortMode    = FolderStore.getSortMode(); // controls unfiled factions
+    const sortMode    = FolderStore.getSortMode();
     const folders     = FolderStore.getFolders();
     const membership  = FolderStore.getMembership();
     const manualOrder = FolderStore.getManualOrder();
 
-    // Identify the active sandbox party (matches a stored faction by sandboxPartyId)
     const activeSandboxPartyId = getActiveSandboxPartyId();
     const activeFactionId = activeSandboxPartyId
       ? Object.values(FactionStore.getAll())
           .find(f => f.kind === "party" && f.sandboxPartyId === activeSandboxPartyId)?.id ?? null
       : null;
 
-    // Decorator added to every faction record before it goes to the template
     const decorate = (f) => ({
       ...f,
-      isParty:        f.kind === "party",
-      isActiveParty:  f.id   === activeFactionId,
-      children:       (f.children ?? []).map(decorate)
+      isParty:           f.kind === "party",
+      isActiveParty:     f.id   === activeFactionId,
+      childrenCollapsed: this.#collapsedFactionIds.has(f.id),
+      children:          (f.children ?? []).map(decorate)
     });
 
-    // getHierarchy() returns top-level roots alpha-sorted, each with .children
     const hierarchyRoots = FactionStore.getHierarchy().map(decorate);
 
-    // ── Step 1: group top-level factions by folder (preserving alpha order from getHierarchy) ──
-    const folderGroups   = {};
+    // Group top-level factions by folder
+    const folderGroups    = {};
     const unfiledFactions = [];
     for (const faction of hierarchyRoots) {
       const folderId = membership[faction.id];
@@ -95,7 +96,7 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
       }
     }
 
-    // ── Step 2: build a helper that re-sorts a list by manual order ──────────
+    // Sort a faction list by manual order (used for folder contents)
     const manualSort = (arr) => {
       const orderMap = new Map(manualOrder.map((id, i) => [id, i]));
       return [...arr].sort((a, b) => {
@@ -105,36 +106,52 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
       });
     };
 
-    // ── Step 3: build recursive folder tree — each folder knows its children ──
-    const buildFolderTree = (parentFolderId) => {
-      return Object.values(folders)
-        .filter(f => (f.parentFolderId ?? null) === parentFolderId)
-        .sort((a, b) => a.name.localeCompare(b.name))
-        .map(f => {
-          const raw = folderGroups[f.id] ?? [];
-          return {
-            type:         "folder",
-            id:           f.id,
-            name:         f.name,
-            color:        f.color    ?? "",
-            sorting:      f.sorting  ?? "a",
-            collapsed:    f.collapsed,
-            factions:     (f.sorting ?? "a") === "m" ? manualSort(raw) : raw,
-            childFolders: buildFolderTree(f.id)
-          };
-        });
+    // Build a recursive folder node (sub-folders inside folders always alpha-sorted)
+    const buildFolderNode = (f) => {
+      const raw = folderGroups[f.id] ?? [];
+      return {
+        type:         "folder",
+        id:           f.id,
+        name:         f.name,
+        color:        f.color   ?? "",
+        sorting:      f.sorting ?? "a",
+        collapsed:    f.collapsed,
+        factions:     (f.sorting ?? "a") === "m" ? manualSort(raw) : [...raw].sort((a, b) => a.name.localeCompare(b.name)),
+        childFolders: Object.values(folders)
+          .filter(cf => (cf.parentFolderId ?? null) === f.id)
+          .sort((a, b) => a.name.localeCompare(b.name))
+          .map(buildFolderNode)
+      };
     };
 
-    const sections = buildFolderTree(null);
+    // Top-level folders as section nodes
+    const folderSections = Object.values(folders)
+      .filter(f => (f.parentFolderId ?? null) === null)
+      .map(buildFolderNode);
 
-    // Unfiled factions use the global sidebar sort toggle
-    let unfiledSorted = sortMode === "manual" ? manualSort(unfiledFactions) : unfiledFactions;
-    // Hoist the active sandbox party to the top regardless of sort mode
+    // Top-level unfiled factions as individual section nodes
+    const factionSections = unfiledFactions.map(f => ({ type: "faction", ...f }));
+
+    // Sort folders and unfiled factions in their own groups — folders always render first
+    const orderMap = new Map(manualOrder.map((id, i) => [id, i]));
+    const byOrder  = (a, b) => {
+      const ia = orderMap.has(a.id) ? orderMap.get(a.id) : 999999;
+      const ib = orderMap.has(b.id) ? orderMap.get(b.id) : 999999;
+      return ia - ib || a.name.localeCompare(b.name);
+    };
+    const byName = (a, b) => a.name.localeCompare(b.name);
+    const sorter = sortMode === "alpha" ? byName : byOrder;
+
+    const sortedFolders  = folderSections.sort(sorter);
+    const sortedFactions = factionSections.sort(sorter);
+
+    // Hoist active sandbox party to top of unfiled list
     if (activeFactionId) {
-      const idx = unfiledSorted.findIndex(f => f.id === activeFactionId);
-      if (idx > 0) unfiledSorted = [unfiledSorted[idx], ...unfiledSorted.slice(0, idx), ...unfiledSorted.slice(idx + 1)];
+      const idx = sortedFactions.findIndex(s => s.id === activeFactionId);
+      if (idx > 0) sortedFactions.unshift(...sortedFactions.splice(idx, 1));
     }
-    sections.push({ type: "unfiled", factions: unfiledSorted });
+
+    const sections = [...sortedFolders, ...sortedFactions];
 
     context.sections   = sections;
     context.sortMode   = sortMode;
@@ -228,6 +245,18 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
         const name = await promptName(`New Sub-Faction (${parentName})`, "Name");
         if (!name) return;
         await FactionStore.create(name, parentId);
+        this.render();
+      });
+    });
+
+    // ── Sub-faction collapse/expand ───────────────────────────────────────────
+    el.querySelectorAll(".faction-collapse-icon").forEach(icon => {
+      icon.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const id = icon.closest("[data-faction-id]")?.dataset.factionId;
+        if (!id) return;
+        if (this.#collapsedFactionIds.has(id)) this.#collapsedFactionIds.delete(id);
+        else                                    this.#collapsedFactionIds.add(id);
         this.render();
       });
     });
@@ -704,75 +733,66 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
       });
 
       header.addEventListener("dragover", (e) => {
-        // Folder being dragged onto another folder header → check for cycles
         if (this.#draggedFolderId) {
           if (this.#wouldCreateFolderCycle(folderId)) return;
-          e.preventDefault();
-          e.stopPropagation();
-          header.classList.add("ddf-drag-over");
+        } else if (!this.#draggedId) {
           return;
         }
-        // Faction being dragged onto a folder header → allow
-        if (this.#draggedId) {
-          e.preventDefault();
-          e.stopPropagation();
+        e.preventDefault();
+        e.stopPropagation();
+        el.querySelectorAll(".ddf-drop-above, .ddf-drop-below, .ddf-drag-over").forEach(x => {
+          x.classList.remove("ddf-drop-above", "ddf-drop-below", "ddf-drag-over");
+        });
+        if (this.#draggedFolderId) {
+          // Position-sensitive: top/bottom edge = reorder folders, centre = nest inside
+          const rect = header.getBoundingClientRect();
+          const pct  = (e.clientY - rect.top) / rect.height;
+          if      (pct < 0.3) section.classList.add("ddf-drop-above");
+          else if (pct > 0.7) section.classList.add("ddf-drop-below");
+          else                header.classList.add("ddf-drag-over");
+        } else {
+          // Faction over folder always shows nest indicator
           header.classList.add("ddf-drag-over");
         }
       });
 
-      header.addEventListener("dragleave", () => {
+      header.addEventListener("dragleave", (e) => {
         header.classList.remove("ddf-drag-over");
+        if (!header.contains(e.relatedTarget)) {
+          section.classList.remove("ddf-drop-above", "ddf-drop-below");
+        }
       });
 
       header.addEventListener("drop", async (e) => {
         e.preventDefault();
         e.stopPropagation();
+        const dropAbove = section.classList.contains("ddf-drop-above");
+        const dropBelow = section.classList.contains("ddf-drop-below");
         header.classList.remove("ddf-drag-over");
+        section.classList.remove("ddf-drop-above", "ddf-drop-below");
 
         if (this.#draggedFolderId) {
           if (this.#wouldCreateFolderCycle(folderId)) return;
           if (this.#draggedFolderId === folderId) return;
-          await FolderStore.setFolderParent(this.#draggedFolderId, folderId);
-          this.render();
+          if (dropAbove || dropBelow) {
+            // Reorder at root level (un-nest dragged folder first)
+            await FolderStore.setFolderParent(this.#draggedFolderId, null);
+            await this.#reorderTopLevel(this.#draggedFolderId, folderId, dropAbove);
+          } else {
+            await FolderStore.setFolderParent(this.#draggedFolderId, folderId);
+            this.render();
+          }
           return;
         }
         if (this.#draggedId) {
+          // Faction dropped on folder always moves into it
           await FolderStore.setFactionFolder(this.#draggedId, folderId);
           this.render();
         }
       });
     });
 
-    // ── Unfiled section: drop here to un-file (faction) or un-nest (folder) ──
-    const unfiledSection = el.querySelector(".ddf-unfiled-section");
-    if (unfiledSection) {
-      unfiledSection.addEventListener("dragover", (e) => {
-        if (!this.#draggedId && !this.#draggedFolderId) return;
-        e.preventDefault();
-        e.stopPropagation();
-        unfiledSection.classList.add("ddf-drag-over");
-      });
-
-      unfiledSection.addEventListener("dragleave", () => {
-        unfiledSection.classList.remove("ddf-drag-over");
-      });
-
-      unfiledSection.addEventListener("drop", async (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        unfiledSection.classList.remove("ddf-drag-over");
-
-        if (this.#draggedFolderId) {
-          await FolderStore.setFolderParent(this.#draggedFolderId, null);
-          this.render();
-          return;
-        }
-        if (this.#draggedId) {
-          await FolderStore.setFactionFolder(this.#draggedId, null);
-          this.render();
-        }
-      });
-    }
+    // Faction-to-faction drops within unfiled are handled by the <li> dragover/drop handlers above.
 
     // ── Sidebar list itself: fallback drop zone for empty space ──
     // Lets users drop a faction OR folder onto the bare sidebar to un-file/un-nest,
@@ -843,6 +863,36 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
       await FolderStore.setFactionFolder(sourceId, targetFolder || null);
     }
 
+    this.render();
+  }
+
+  /**
+   * Reorders the unified top-level manual order (folders + unfiled factions).
+   * Ensures both root folder IDs and top-level faction IDs are present in the array,
+   * then splices `sourceId` before or after `targetId`.
+   */
+  async #reorderTopLevel(sourceId, targetId, insertBefore) {
+    const allFactions = FactionStore.getAll();
+    const folders     = FolderStore.getFolders();
+    const membership  = FolderStore.getMembership();
+
+    const rootFolderIds  = Object.keys(folders).filter(id => (folders[id].parentFolderId ?? null) === null);
+    const topFactionIds  = Object.keys(allFactions).filter(id => {
+      const f = allFactions[id];
+      return (!f.parentId || !allFactions[f.parentId]) && !membership[id];
+    });
+
+    let order = [...FolderStore.getManualOrder()];
+    for (const id of [...rootFolderIds, ...topFactionIds]) {
+      if (!order.includes(id)) order.push(id);
+    }
+
+    order = order.filter(id => id !== sourceId);
+    const targetIdx = order.indexOf(targetId);
+    if (targetIdx === -1) order.push(sourceId);
+    else order.splice(insertBefore ? targetIdx : targetIdx + 1, 0, sourceId);
+
+    await FolderStore.setManualOrder(order);
     this.render();
   }
 

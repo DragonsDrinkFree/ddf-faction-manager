@@ -36,12 +36,6 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
   /** Saved pan/zoom transform across full re-renders. */
   #savedTransform = null;
 
-  /** Whether the force-directed auto-layout simulation is armed (continuous mode). */
-  #forceLayoutActive = false;
-
-  /** Force level 1–5 controlling node spacing. 3 = default. */
-  #forceLevel = 3;
-
   /** Bound hook handlers for cleanup in _onClose. */
   #onFactionsChanged    = null;
   #onRelationshipsChanged = null;
@@ -54,22 +48,13 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
     window: {
       title: "Faction Relationships",
       resizable: true,
-      minimizable: true,
-      controls: [
-        {
-          icon:   "fa-solid fa-atom",
-          label:  "Auto Layout",
-          action: "toggleForceLayout"
-        }
-      ]
+      minimizable: true
     },
     position: {
       width: 900,
       height: 600
     },
-    actions: {
-      toggleForceLayout: GlobalRelationshipsApp.toggleForceLayout
-    }
+    actions: {}
   };
 
   static PARTS = {
@@ -95,19 +80,11 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
     this.#onMembersChanged = () => {
       if (!this.rendered) return;
       this.#mindMap?.remount();
-      if (this.#forceLayoutActive) this.#mindMap?.startForceLayout(this.#forceLevel);
     };
 
     Hooks.on("ddf-factions-changed",      this.#onFactionsChanged);
     Hooks.on("ddf-relationships-changed", this.#onRelationshipsChanged);
     Hooks.on("ddf-members-changed",       this.#onMembersChanged);
-  }
-
-  /** Title bar button handler: opens the auto-layout settings panel. */
-  static toggleForceLayout(event, target) {
-    this.#closeFloatingPanels();
-    const rect = target.getBoundingClientRect();
-    this.#showForceLayoutPanel(rect.left, rect.bottom + 4);
   }
 
   static async show() {
@@ -118,67 +95,6 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
       GlobalRelationshipsApp.#instance = new GlobalRelationshipsApp();
     }
     GlobalRelationshipsApp.#instance.render({ force: true });
-  }
-
-  // ─── Force Layout Panel ───────────────────────────────────────────────────────
-
-  #showForceLayoutPanel(x, y) {
-    const levelLabels = ["", "Very Close", "Close", "Normal", "Spread", "Far"];
-    const active = this.#forceLayoutActive;
-    const level  = this.#forceLevel;
-
-    const panel = document.createElement("div");
-    panel.className  = "mm-search-panel mm-force-panel";
-    panel.style.left = `${x}px`;
-    panel.style.top  = `${y}px`;
-
-    panel.innerHTML = `
-      <div class="mm-panel-title">Auto Layout</div>
-      <div class="mm-force-toggle-row">
-        <label class="mm-force-toggle-label">
-          <input type="checkbox" class="mm-force-toggle"${active ? " checked" : ""}>
-          <span>Continuously Rebalance</span>
-        </label>
-      </div>
-      <div class="mm-force-level-row">
-        <span class="mm-force-level-caption">Spacing:</span>
-        <input type="range" class="mm-force-level-slider" min="1" max="5" step="1" value="${level}">
-        <span class="mm-force-spacing-name">${levelLabels[level]}</span>
-      </div>
-      <div class="mm-panel-actions"><button class="mm-btn-cancel">Close</button></div>
-    `;
-
-    const toggle      = panel.querySelector(".mm-force-toggle");
-    const slider      = panel.querySelector(".mm-force-level-slider");
-    const spacingName = panel.querySelector(".mm-force-spacing-name");
-
-    const getAtomBtn = () => this.element?.querySelector('[data-action="toggleForceLayout"]');
-
-    toggle.addEventListener("change", () => {
-      if (toggle.checked) {
-        this.#forceLayoutActive = true;
-        getAtomBtn()?.classList.add("active");
-        this.#mindMap?.startForceLayout(this.#forceLevel);
-      } else {
-        this.#mindMap?.stopForceLayout(); // calls onForceLayoutStop → clears flag + button
-      }
-    });
-
-    slider.addEventListener("input", () => {
-      const lvl = parseInt(slider.value, 10);
-      this.#forceLevel = lvl;
-      spacingName.textContent = levelLabels[lvl];
-    });
-
-    slider.addEventListener("change", () => {
-      const lvl = parseInt(slider.value, 10);
-      this.#forceLevel = lvl;
-      if (this.#forceLayoutActive) this.#mindMap?.startForceLayout(lvl);
-    });
-
-    panel.querySelector(".mm-btn-cancel").addEventListener("click", () => this.#closeFloatingPanels());
-    this.#appendFloating(panel);
-    bindPanelDismiss(panel);
   }
 
   // ─── Context ─────────────────────────────────────────────────────────────────
@@ -298,10 +214,6 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
     super._onRender(context, options);
 
     this.#teardownMindMap();
-
-    // Restore force-layout button active state after re-render
-    const forceBtn = this.element.querySelector('[data-action="toggleForceLayout"]');
-    if (forceBtn) forceBtn.classList.toggle("active", this.#forceLayoutActive);
 
     const wrap = this.element.querySelector(".relationship-canvas-wrap");
     if (wrap) {
@@ -490,7 +402,6 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
 
     // Remount the mind map with the new POV (getters re-read fresh data)
     this.#mindMap?.remount();
-    if (this.#forceLayoutActive) this.#mindMap?.startForceLayout(this.#forceLevel);
 
     // Pan to centre on the newly selected node
     if (this.#povFactionId) {
@@ -582,12 +493,6 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
         app.#togglePOV(factionId);
       },
 
-      onForceLayoutStop: () => {
-        app.#forceLayoutActive = false;
-        const btn = app.element.querySelector('[data-action="toggleForceLayout"]');
-        if (btn) btn.classList.remove("active");
-      },
-
       onConnectNodes: (fromKey, toKey, clientX, clientY) => {
         const from = app.#describeNode(fromKey);
         const to   = app.#describeNode(toKey);
@@ -614,13 +519,9 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
       this.#savedTransform = null;
     }
     this.#mindMap.mount();
-    if (this.#forceLayoutActive) this.#mindMap.startForceLayout(this.#forceLevel);
 
     this.#resizeObserver = new ResizeObserver(() => {
-      if (this.#mindMap) {
-        this.#mindMap.remount();
-        if (this.#forceLayoutActive) this.#mindMap.startForceLayout(this.#forceLevel);
-      }
+      if (this.#mindMap) this.#mindMap.remount();
     });
     this.#resizeObserver.observe(wrap);
   }

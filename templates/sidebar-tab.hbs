@@ -28,24 +28,19 @@
 
     {{#if (eq type "folder")}}
       {{> ddf-folder-section this selectedId=../selectedId}}
-
     {{else}}
-      {{!-- Unfiled factions --}}
-      {{#if factions.length}}
-        <ol class="faction-items ddf-unfiled-section" data-folder-id="">
-          {{#each factions}}
-            {{> ddf-faction-item faction=this selectedId=../../selectedId}}
-          {{/each}}
-        </ol>
-      {{else}}
-        {{#unless ../hasFolders}}
-          <p class="faction-empty ddf-no-factions-hint">
-            No factions yet. Click <strong>Create Faction</strong> to get started.
-          </p>
-        {{/unless}}
-      {{/if}}
+      {{!-- Individual unfiled faction at top level --}}
+      <ol class="faction-items ddf-unfiled-section" data-folder-id="" data-top-id="{{id}}">
+        {{> ddf-faction-item faction=this selectedId=../selectedId}}
+      </ol>
     {{/if}}
 
   {{/each}}
+
+  {{#unless sections.length}}
+    <p class="faction-empty ddf-no-factions-hint">
+      No factions yet. Click <strong>Create Faction</strong> to get started.
+    </p>
+  {{/unless}}
 
 </div>

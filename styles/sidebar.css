@@ -80,6 +80,17 @@
   font-size: 0.7rem;
 }
 
+/* Chevron rotates to point down when children are expanded */
+#ddfFactions .faction-collapse-icon {
+  cursor: pointer;
+  transition: transform 0.15s;
+  transform: rotate(0deg);
+}
+
+#ddfFactions .faction-item:not(.children-collapsed) > .faction-item-row .faction-collapse-icon {
+  transform: rotate(90deg);
+}
+
 #ddfFactions .faction-name,
 .ddf-faction-manager .faction-name {
   flex: 1;
