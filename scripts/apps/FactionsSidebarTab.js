@@ -472,17 +472,17 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
 
     return [
       {
-        name: "Edit Folder",
+        label: "Edit Folder",
         icon: '<i class="fa-solid fa-pen-to-square"></i>',
-        callback: (header) => {
+        onClick: (_event, header) => {
           const folderId = folderIdFrom(header);
           if (folderId) FolderConfigApp.openEdit(folderId, () => this.render());
         }
       },
       {
-        name: "Create Faction",
+        label: "Create Faction",
         icon: '<i class="fa-solid fa-plus"></i>',
-        callback: async (header) => {
+        onClick: async (_event, header) => {
           const folderId = folderIdFrom(header);
           if (!folderId) return;
           const folderName = FolderStore.getFolders()[folderId]?.name ?? "folder";
@@ -494,9 +494,9 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
         }
       },
       {
-        name: "Remove Folder",
+        label: "Remove Folder",
         icon: '<i class="fa-solid fa-folder-minus"></i>',
-        callback: async (header) => {
+        onClick: async (_event, header) => {
           const folderId = folderIdFrom(header);
           if (!folderId) return;
           const folder = FolderStore.getFolders()[folderId];
@@ -512,9 +512,9 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
         }
       },
       {
-        name: "Delete All",
+        label: "Delete All",
         icon: '<i class="fa-solid fa-trash"></i>',
-        callback: async (header) => {
+        onClick: async (_event, header) => {
           const folderId = folderIdFrom(header);
           if (!folderId) return;
           const folder = FolderStore.getFolders()[folderId];
@@ -543,13 +543,13 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
   #factionMenuEntries() {
     return [
       {
-        name: "Create Sub-Faction",
+        label: "Create Sub-Faction",
         icon: '<i class="fa-solid fa-plus"></i>',
-        condition: (item) => {
+        visible: (item) => {
           const faction = FactionStore.getAll()[item.dataset.factionId];
           return faction && faction.kind !== "party";
         },
-        callback: async (item) => {
+        onClick: async (_event, item) => {
           const parentId = item.dataset.factionId;
           if (!parentId) return;
           const parentName = FactionStore.getAll()[parentId]?.name ?? "faction";
@@ -560,13 +560,13 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
         }
       },
       {
-        name: "Make Sub-Faction",
+        label: "Make Sub-Faction",
         icon: '<i class="fa-solid fa-turn-down-right"></i>',
-        condition: (item) => {
+        visible: (item) => {
           const faction = FactionStore.getAll()[item.dataset.factionId];
           return faction && faction.kind !== "party";
         },
-        callback: async (item) => {
+        onClick: async (_event, item) => {
           const factionId = item.dataset.factionId;
           if (!factionId) return;
           const faction = FactionStore.getAll()[factionId];
@@ -585,10 +585,10 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
         }
       },
       {
-        name: "Promote Faction",
+        label: "Promote Faction",
         icon: '<i class="fa-solid fa-arrow-up"></i>',
-        condition: (item) => !!FactionStore.getAll()[item.dataset.factionId]?.parentId,
-        callback: async (item) => {
+        visible: (item) => !!FactionStore.getAll()[item.dataset.factionId]?.parentId,
+        onClick: async (_event, item) => {
           const factionId = item.dataset.factionId;
           if (!factionId) return;
           await FactionStore.update(factionId, { parentId: null });
@@ -596,9 +596,9 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
         }
       },
       {
-        name: "Delete",
+        label: "Delete",
         icon: '<i class="fa-solid fa-trash"></i>',
-        callback: async (item) => {
+        onClick: async (_event, item) => {
           const factionId = item.dataset.factionId;
           if (factionId) await this.#deleteFactionWithConfirm(factionId);
         }
