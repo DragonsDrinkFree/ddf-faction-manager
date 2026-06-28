@@ -34,6 +34,7 @@ export class FactionDetailApp extends BaseDetailApp {
     actions: {
       ...BaseDetailApp.SHARED_ACTIONS,
       openJournal:       FactionDetailApp.#onOpenJournal,
+      copyFactionLink:   FactionDetailApp.#onCopyFactionLink,
       breakParentLink:   FactionDetailApp.#onBreakParentLink,
       addMember:         FactionDetailApp.#onAddMember,
       addRank:           FactionDetailApp.#onAddRank,
@@ -248,6 +249,22 @@ export class FactionDetailApp extends BaseDetailApp {
   /** @override */
   _onRender(context, options) {
     super._onRender(context, options);
+
+    // ── Copy-link button injected directly into window header (outside ... menu) ──
+    const header = this.element.querySelector(".window-header");
+    if (header && !header.querySelector(".ddf-copy-link-header-btn")) {
+      const anchor = header.querySelector('[data-action="toggleControls"]')
+                 ?? header.querySelector('[data-action="close"]');
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "ddf-copy-link-header-btn";
+      btn.dataset.action = "copyFactionLink";
+      btn.title = "Copy Faction Link";
+      btn.setAttribute("aria-label", "Copy Faction Link");
+      btn.innerHTML = '<i class="fa-solid fa-passport"></i>';
+      if (anchor) anchor.before(btn);
+      else header.appendChild(btn);
+    }
 
     // ── Stat inputs: auto-save on change (blur after edit) ───────────────────
     this.element.querySelectorAll(".faction-stat-input").forEach(input => {
@@ -490,6 +507,19 @@ export class FactionDetailApp extends BaseDetailApp {
     const journal = FactionStore.getFactionJournal();
     if (!journal) return;
     journal.sheet.render({ force: true });
+  }
+
+  static async #onCopyFactionLink(_event, _target) {
+    const factionId = this._selectedFactionId;
+    if (!factionId) return;
+    const name = FactionStore.getAll()[factionId]?.name ?? factionId;
+    const link = `@Faction[${factionId}]{${name}}`;
+    try {
+      await navigator.clipboard.writeText(link);
+      ui.notifications?.info(`Copied: ${link}`);
+    } catch {
+      ui.notifications?.warn("Could not copy to clipboard.");
+    }
   }
 
   /**

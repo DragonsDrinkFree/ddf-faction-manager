@@ -13,7 +13,7 @@ import {
   importSandboxParty,
   syncAllSandboxPartyMembers
 } from "../utils/SandboxIntegration.js";
-import { promptName } from "../utils/AppHelpers.js";
+import { promptName, promptPickFaction } from "../utils/AppHelpers.js";
 
 const { HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -430,6 +430,32 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
     return this.#getFolderDescendants(this.#draggedFolderId).has(targetFolderId);
   }
 
+  /**
+   * Returns the set of faction IDs that are descendants of `factionId`
+   * (children, grandchildren, …), NOT including `factionId` itself.
+   * Used for cycle prevention in subfaction nesting.
+   */
+  #getFactionDescendants(factionId) {
+    const all = FactionStore.getAll();
+    const result = new Set();
+    const walk = (parentId) => {
+      for (const f of Object.values(all)) {
+        if (f.parentId === parentId && !result.has(f.id)) {
+          result.add(f.id);
+          walk(f.id);
+        }
+      }
+    };
+    walk(factionId);
+    return result;
+  }
+
+  /** True when nesting `sourceId` under `targetId` would create a cycle. */
+  #wouldCreateFactionCycle(sourceId, targetId) {
+    if (sourceId === targetId) return true;
+    return this.#getFactionDescendants(sourceId).has(targetId);
+  }
+
   // ─── Context Menus ───────────────────────────────────────────────────────────
 
   #setupContextMenus(el) {
@@ -530,6 +556,31 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
           const name = await promptName(`New Sub-Faction (${parentName})`, "Name");
           if (!name) return;
           await FactionStore.create(name, parentId);
+          this.render();
+        }
+      },
+      {
+        name: "Make Sub-Faction",
+        icon: '<i class="fa-solid fa-turn-down-right"></i>',
+        condition: (item) => {
+          const faction = FactionStore.getAll()[item.dataset.factionId];
+          return faction && faction.kind !== "party";
+        },
+        callback: async (item) => {
+          const factionId = item.dataset.factionId;
+          if (!factionId) return;
+          const faction = FactionStore.getAll()[factionId];
+          if (!faction) return;
+          const descendants = this.#getFactionDescendants(factionId);
+          const allFactions = FactionStore.getAll();
+          const excludeIds  = [
+            factionId,
+            ...descendants,
+            ...Object.values(allFactions).filter(f => f.kind === "party").map(f => f.id)
+          ];
+          const parentId = await promptPickFaction(excludeIds, `Set Parent for "${faction.name}"`);
+          if (!parentId) return;
+          await FactionStore.update(factionId, { parentId });
           this.render();
         }
       },
@@ -681,31 +732,47 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
 
       item.addEventListener("dragover", (e) => {
         if (!this.#draggedId || this.#draggedId === item.dataset.factionId) return;
+        const targetFaction = FactionStore.getAll()[item.dataset.factionId];
+        if (targetFaction?.kind === "party") return;
+        if (this.#wouldCreateFactionCycle(this.#draggedId, item.dataset.factionId)) return;
         e.preventDefault();
         e.stopPropagation();
         e.dataTransfer.dropEffect = "move";
-        el.querySelectorAll(".ddf-drop-above, .ddf-drop-below").forEach(x => {
-          x.classList.remove("ddf-drop-above", "ddf-drop-below");
+        el.querySelectorAll(".ddf-drop-above, .ddf-drop-below, .ddf-drag-over").forEach(x => {
+          x.classList.remove("ddf-drop-above", "ddf-drop-below", "ddf-drag-over");
         });
         const rect = item.getBoundingClientRect();
-        item.classList.add(e.clientY < rect.top + rect.height / 2 ? "ddf-drop-above" : "ddf-drop-below");
+        const pct  = (e.clientY - rect.top) / rect.height;
+        if      (pct < 0.3) item.classList.add("ddf-drop-above");
+        else if (pct > 0.7) item.classList.add("ddf-drop-below");
+        else                item.classList.add("ddf-drag-over");
       });
 
       item.addEventListener("dragleave", () => {
-        item.classList.remove("ddf-drop-above", "ddf-drop-below");
+        item.classList.remove("ddf-drop-above", "ddf-drop-below", "ddf-drag-over");
       });
 
       item.addEventListener("drop", async (e) => {
         if (!this.#draggedId || this.#draggedId === item.dataset.factionId) return;
         e.preventDefault();
         e.stopPropagation();
-        const targetId     = item.dataset.factionId;
-        const sourceId     = this.#draggedId;
-        const rect         = item.getBoundingClientRect();
-        const insertBefore = e.clientY < rect.top + rect.height / 2;
-        const targetList   = item.closest("ol[data-folder-id]");
-        const targetFolder = targetList?.dataset.folderId ?? "";
-        await this.#reorderAndMove(sourceId, targetId, insertBefore, targetFolder);
+        const targetId   = item.dataset.factionId;
+        const sourceId   = this.#draggedId;
+        const rect       = item.getBoundingClientRect();
+        const pct        = (e.clientY - rect.top) / rect.height;
+        const isNestDrop = pct >= 0.3 && pct <= 0.7;
+        item.classList.remove("ddf-drop-above", "ddf-drop-below", "ddf-drag-over");
+        if (isNestDrop) {
+          if (this.#wouldCreateFactionCycle(sourceId, targetId)) return;
+          if (FactionStore.getAll()[targetId]?.kind === "party") return;
+          await FactionStore.update(sourceId, { parentId: targetId });
+          this.render();
+        } else {
+          const insertBefore = pct < 0.3;
+          const targetList   = item.closest("ol[data-folder-id]");
+          const targetFolder = targetList?.dataset.folderId ?? "";
+          await this.#reorderAndMove(sourceId, targetId, insertBefore, targetFolder);
+        }
       });
     });
 
@@ -817,6 +884,8 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
         }
         if (this.#draggedId) {
           await FolderStore.setFactionFolder(this.#draggedId, null);
+          const f = FactionStore.getAll()[this.#draggedId];
+          if (f?.parentId) await FactionStore.update(this.#draggedId, { parentId: null });
           this.render();
         }
       });
