@@ -84,6 +84,75 @@ export function promptObjective(title, existing = null) {
 }
 
 /**
+ * Opens a DialogV2 with a live-filter faction picker.
+ * Resolves to the selected faction ID, or null if cancelled.
+ *
+ * @param {string[]} excludeIds  — faction IDs to omit from the list
+ * @param {string}   title       — dialog window title
+ * @returns {Promise<string|null>}
+ */
+export function promptPickFaction(excludeIds, title = "Pick Faction") {
+  const allFactions = FactionStore.getAll();
+  const candidates = Object.values(allFactions)
+    .filter(f => !excludeIds.includes(f.id))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  return new Promise(resolve => {
+    const rows = candidates.map(f =>
+      `<div class="ddf-pick-faction-row" data-faction-id="${f.id}">
+         ${foundry.utils.escapeHTML(f.name)}
+       </div>`
+    ).join("") || `<div class="ddf-pick-faction-empty">No eligible factions.</div>`;
+
+    foundry.applications.api.DialogV2.prompt({
+      window: { title },
+      content: `
+        <div class="standard-form">
+          <div class="form-group">
+            <div class="form-fields">
+              <input type="text" class="ddf-pick-faction-filter"
+                     placeholder="Filter factions…" autofocus />
+            </div>
+          </div>
+          <div class="ddf-pick-faction-list">${rows}</div>
+          <input type="hidden" name="faction_pick" value="" />
+        </div>`,
+      ok: {
+        label: "Confirm",
+        callback: (_event, button) => {
+          resolve(button.form.elements.faction_pick.value || null);
+        }
+      },
+      rejectClose: false
+    }).catch(() => resolve(null));
+
+    // Wire live filter + row selection once the dialog renders into the DOM
+    setTimeout(() => {
+      const filter = document.querySelector(".ddf-pick-faction-filter");
+      const list   = document.querySelector(".ddf-pick-faction-list");
+      const hidden = list?.closest("form")?.elements.faction_pick;
+      if (!filter || !list) return;
+
+      filter.addEventListener("input", () => {
+        const q = filter.value.toLowerCase();
+        list.querySelectorAll(".ddf-pick-faction-row").forEach(row => {
+          row.style.display = row.textContent.toLowerCase().includes(q) ? "" : "none";
+        });
+      });
+
+      list.addEventListener("click", e => {
+        const row = e.target.closest(".ddf-pick-faction-row");
+        if (!row) return;
+        list.querySelectorAll(".ddf-pick-faction-row").forEach(r =>
+          r.classList.toggle("selected", r === row)
+        );
+        if (hidden) hidden.value = row.dataset.factionId;
+      });
+    }, 50);
+  });
+}
+
+/**
  * Append an entry to the faction event log and (when SCM is present and the
  * matching toggle is enabled) post a session note. No-op without a faction id.
  */
