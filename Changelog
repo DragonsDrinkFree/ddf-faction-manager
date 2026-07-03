@@ -1,3 +1,10 @@
+# v1.1.1
+
+
+## Minor
+- Eliminated a bunch of redundant/repeating background calls/renders/data transmissions that would potentially impact performance as the faction system expands.
+
+
 # v1.1.0
 
 ## Minor

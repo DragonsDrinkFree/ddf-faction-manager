@@ -44,6 +44,20 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
   /** Folder ID currently being dragged. Set when the drag source is a folder header. */
   #draggedFolderId = null;
 
+  /**
+   * Descendant IDs of the current drag source, computed once at dragstart.
+   * dragover fires continuously while dragging, so the recursive walks must
+   * not run per-event.
+   */
+  #dragDescendantIds = null;
+  #draggedFolderDescendants = null;
+
+  /** Last drag-feedback target: { el, cls }. Skips DOM churn on repeat dragover. */
+  #lastDragFeedback = null;
+
+  /** Timestamp of the last SCM sync, used to throttle per-render checks. */
+  #lastSandboxCheckAt = 0;
+
   /** Faction IDs whose sub-faction list is collapsed (session-only). */
   #collapsedFactionIds = new Set();
 
@@ -336,6 +350,12 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
    * import any new ones. Silent when SCM is unavailable or there's nothing to do.
    */
   async #runSandboxCheck() {
+    // Renders happen after every CRUD action; a full SCM roster reconcile on
+    // each one is wasted work. Throttle to at most once per 10 seconds —
+    // tab re-activation after that window still picks up SCM changes.
+    const now = Date.now();
+    if (now - this.#lastSandboxCheckAt < 10000) return;
+    this.#lastSandboxCheckAt = now;
     try {
       await syncAllSandboxPartyMembers();
       if (this.#sandboxPromptOpen) return;
@@ -427,7 +447,9 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
   #wouldCreateFolderCycle(targetFolderId) {
     if (!this.#draggedFolderId) return false;
     if (this.#draggedFolderId === targetFolderId) return true;
-    return this.#getFolderDescendants(this.#draggedFolderId).has(targetFolderId);
+    const descendants = this.#draggedFolderDescendants
+                     ?? this.#getFolderDescendants(this.#draggedFolderId);
+    return descendants.has(targetFolderId);
   }
 
   /**
@@ -707,6 +729,22 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
     el.querySelectorAll(".ddf-drop-above, .ddf-drop-below, .ddf-drag-over, .ddf-drag-source").forEach(x => {
       x.classList.remove("ddf-drop-above", "ddf-drop-below", "ddf-drag-over", "ddf-drag-source");
     });
+    this.#lastDragFeedback = null;
+  }
+
+  /**
+   * Highlight `target` with the given feedback class, clearing any previous
+   * highlight. No-ops when the feedback is unchanged, so the tree-wide class
+   * sweep runs only when the highlight actually moves — not on every dragover.
+   */
+  #applyDragFeedback(el, target, cls) {
+    const last = this.#lastDragFeedback;
+    if (last?.el === target && last?.cls === cls) return;
+    el.querySelectorAll(".ddf-drop-above, .ddf-drop-below, .ddf-drag-over").forEach(x => {
+      x.classList.remove("ddf-drop-above", "ddf-drop-below", "ddf-drag-over");
+    });
+    target.classList.add(cls);
+    this.#lastDragFeedback = { el: target, cls };
   }
 
   #setupDragDrop(el) {
@@ -720,6 +758,9 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
         e.stopPropagation();
         this.#draggedId       = item.dataset.factionId;
         this.#draggedFolderId = null;
+        this.#draggedFolderDescendants = null;
+        // Snapshot the subtree once — dragover consults it per mouse move
+        this.#dragDescendantIds = this.#getFactionDescendants(this.#draggedId);
         e.dataTransfer.effectAllowed = "move";
         e.dataTransfer.setData("text/plain", this.#draggedId);
         setTimeout(() => item.classList.add("ddf-drag-source"), 0);
@@ -727,29 +768,30 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
 
       item.addEventListener("dragend", () => {
         this.#draggedId = null;
+        this.#dragDescendantIds = null;
         this.#clearDragFeedback(el);
       });
 
       item.addEventListener("dragover", (e) => {
-        if (!this.#draggedId || this.#draggedId === item.dataset.factionId) return;
-        const targetFaction = FactionStore.getAll()[item.dataset.factionId];
+        const targetId = item.dataset.factionId;
+        if (!this.#draggedId || this.#draggedId === targetId) return;
+        if (this.#dragDescendantIds?.has(targetId)) return;
+        const targetFaction = FactionStore.getAll()[targetId];
         if (targetFaction?.kind === "party") return;
-        if (this.#wouldCreateFactionCycle(this.#draggedId, item.dataset.factionId)) return;
         e.preventDefault();
         e.stopPropagation();
         e.dataTransfer.dropEffect = "move";
-        el.querySelectorAll(".ddf-drop-above, .ddf-drop-below, .ddf-drag-over").forEach(x => {
-          x.classList.remove("ddf-drop-above", "ddf-drop-below", "ddf-drag-over");
-        });
         const rect = item.getBoundingClientRect();
         const pct  = (e.clientY - rect.top) / rect.height;
-        if      (pct < 0.3) item.classList.add("ddf-drop-above");
-        else if (pct > 0.7) item.classList.add("ddf-drop-below");
-        else                item.classList.add("ddf-drag-over");
+        const cls  = pct < 0.3 ? "ddf-drop-above"
+                   : pct > 0.7 ? "ddf-drop-below"
+                   : "ddf-drag-over";
+        this.#applyDragFeedback(el, item, cls);
       });
 
       item.addEventListener("dragleave", () => {
         item.classList.remove("ddf-drop-above", "ddf-drop-below", "ddf-drag-over");
+        if (this.#lastDragFeedback?.el === item) this.#lastDragFeedback = null;
       });
 
       item.addEventListener("drop", async (e) => {
@@ -789,6 +831,9 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
         e.stopPropagation();
         this.#draggedFolderId = folderId;
         this.#draggedId       = null;
+        this.#dragDescendantIds = null;
+        // Snapshot the folder subtree once — dragover consults it per mouse move
+        this.#draggedFolderDescendants = this.#getFolderDescendants(folderId);
         e.dataTransfer.effectAllowed = "move";
         e.dataTransfer.setData("text/plain", `folder:${folderId}`);
         setTimeout(() => section.classList.add("ddf-drag-source"), 0);
@@ -796,6 +841,7 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
 
       header.addEventListener("dragend", () => {
         this.#draggedFolderId = null;
+        this.#draggedFolderDescendants = null;
         this.#clearDragFeedback(el);
       });
 
@@ -807,19 +853,16 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
         }
         e.preventDefault();
         e.stopPropagation();
-        el.querySelectorAll(".ddf-drop-above, .ddf-drop-below, .ddf-drag-over").forEach(x => {
-          x.classList.remove("ddf-drop-above", "ddf-drop-below", "ddf-drag-over");
-        });
         if (this.#draggedFolderId) {
           // Position-sensitive: top/bottom edge = reorder folders, centre = nest inside
           const rect = header.getBoundingClientRect();
           const pct  = (e.clientY - rect.top) / rect.height;
-          if      (pct < 0.3) section.classList.add("ddf-drop-above");
-          else if (pct > 0.7) section.classList.add("ddf-drop-below");
-          else                header.classList.add("ddf-drag-over");
+          if      (pct < 0.3) this.#applyDragFeedback(el, section, "ddf-drop-above");
+          else if (pct > 0.7) this.#applyDragFeedback(el, section, "ddf-drop-below");
+          else                this.#applyDragFeedback(el, header, "ddf-drag-over");
         } else {
           // Faction over folder always shows nest indicator
-          header.classList.add("ddf-drag-over");
+          this.#applyDragFeedback(el, header, "ddf-drag-over");
         }
       });
 
@@ -828,6 +871,8 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
         if (!header.contains(e.relatedTarget)) {
           section.classList.remove("ddf-drop-above", "ddf-drop-below");
         }
+        const last = this.#lastDragFeedback?.el;
+        if (last === header || last === section) this.#lastDragFeedback = null;
       });
 
       header.addEventListener("drop", async (e) => {

@@ -34,6 +34,7 @@ export { DOC_SIZE_PRESETS, NODE_KEY, parseNodeKey };
  *   edges:             getter → array (local) or object map (global)
  *   positions:         getter → object
  *   onPositionSave:    (nodeKey, x, y) => void
+ *   onPositionsSave:   (entries: Array<{nodeKey, x, y}>) => void  (optional; batches multi-node saves into one write)
  *   onContextMenu:     (svgX, svgY, clientX, clientY) => void
  *   onNodeContextMenu: (nodeKey, edge|null, clientX, clientY) => void
  *   members:           getter → object (global mode — all members keyed by id)
@@ -1610,9 +1611,20 @@ export class MindMapRenderer {
   #forceSaveAllPositions() {
     const nodeMap = this._globalNodeMap;
     if (!nodeMap) return;
-    for (const node of Object.values(nodeMap)) {
-      this.#config.onPositionSave?.(node.key, node.x, node.y);
-    }
+    this.#emitPositionSaves(
+      Object.values(nodeMap).map(n => ({ nodeKey: n.key, x: n.x, y: n.y }))
+    );
+  }
+
+  /**
+   * Persist a set of node positions in one call. Prefers the batch config
+   * callback (a single settings write) and falls back to per-node saves.
+   * @param {Array<{nodeKey: string, x: number, y: number}>} entries
+   */
+  #emitPositionSaves(entries) {
+    if (!entries.length) return;
+    if (this.#config.onPositionsSave) return void this.#config.onPositionsSave(entries);
+    for (const { nodeKey, x, y } of entries) this.#config.onPositionSave?.(nodeKey, x, y);
   }
 
   /** Update all node transforms plus every edge/spoke/ring in one pass. */
@@ -2117,9 +2129,10 @@ export class MindMapRenderer {
       // Child dragged: normalize all siblings to the same orbit radius
       this.#normalizeOrbitAfterDrag(node);
     } else {
-      this.#config.onPositionSave(nodeKey, node.x, node.y);
-      // Save all descendants (any depth) that moved with the dragged node
-      if (isGlobal) this.#saveDescendantPositions(nodeKey);
+      const entries = [{ nodeKey, x: node.x, y: node.y }];
+      // Include all descendants (any depth) that moved with the dragged node
+      if (isGlobal) this.#collectDescendantPositions(nodeKey, entries);
+      this.#emitPositionSaves(entries);
     }
 
     this.#drag = null;
@@ -2134,7 +2147,7 @@ export class MindMapRenderer {
   #normalizeOrbitAfterDrag(draggedNode) {
     const parentNode = this._globalNodeMap?.[draggedNode.parentId];
     if (!parentNode) {
-      this.#config.onPositionSave(draggedNode.key, draggedNode.x, draggedNode.y);
+      this.#emitPositionSaves([{ nodeKey: draggedNode.key, x: draggedNode.x, y: draggedNode.y }]);
       return;
     }
 
@@ -2157,6 +2170,7 @@ export class MindMapRenderer {
         n.isSubFaction
       ));
 
+    const entries = [];
     for (const sib of siblings) {
       const oldX  = sib.x, oldY = sib.y;
       const angle = Math.atan2(sib.y - parentNode.y, sib.x - parentNode.x);
@@ -2164,7 +2178,7 @@ export class MindMapRenderer {
       sib.y = parentNode.y + newRadius * Math.sin(angle);
       const sibEl = this._globalNodeEls?.[sib.key]?.el;
       if (sibEl) sibEl.setAttribute("transform", `translate(${sib.x},${sib.y})`);
-      this.#config.onPositionSave(sib.key, sib.x, sib.y);
+      entries.push({ nodeKey: sib.key, x: sib.x, y: sib.y });
       this.#redrawGlobalEdgesForNode(sib.key);
 
       // Sub-factions can have descendants — carry them along by the same delta.
@@ -2173,10 +2187,11 @@ export class MindMapRenderer {
         const sdx = sib.x - oldX, sdy = sib.y - oldY;
         if (sdx || sdy) {
           this.#moveDescendantsLive(sib.key, sdx, sdy);
-          this.#saveDescendantPositions(sib.key);
+          this.#collectDescendantPositions(sib.key, entries);
         }
       }
     }
+    this.#emitPositionSaves(entries);
 
     // Update the appropriate orbit ring radius
     if (isMember) {
@@ -2209,15 +2224,15 @@ export class MindMapRenderer {
   }
 
   /**
-   * Recursively save positions of all descendants of nodeKey.
-   * Called on mouseup so persisted data matches the moved DOM positions.
+   * Recursively collect positions of all descendants of nodeKey into `entries`
+   * so the caller can persist them in a single batched save on mouseup.
    */
-  #saveDescendantPositions(nodeKey) {
+  #collectDescendantPositions(nodeKey, entries) {
     if (!this._globalNodeEls) return;
     for (const { node: child } of Object.values(this._globalNodeEls)) {
       if (child.parentId !== nodeKey) continue;
-      this.#config.onPositionSave(child.key, child.x, child.y);
-      this.#saveDescendantPositions(child.key);
+      entries.push({ nodeKey: child.key, x: child.x, y: child.y });
+      this.#collectDescendantPositions(child.key, entries);
     }
   }
 
