@@ -484,8 +484,26 @@ export class FactionsSidebarTab extends HandlebarsApplicationMixin(
     const ContextMenu = foundry.applications.ux.ContextMenu;
 
     // fixed: true renders via popover on document.body — escapes sidebar overflow clipping
-    new ContextMenu(el, ".ddf-folder-header", this.#folderMenuEntries(), { jQuery: false, fixed: true });
-    new ContextMenu(el, ".faction-item",       this.#factionMenuEntries(), { jQuery: false, fixed: true });
+    new ContextMenu(el, ".ddf-folder-header", this.#normalizeMenuEntries(this.#folderMenuEntries()), { jQuery: false, fixed: true });
+    new ContextMenu(el, ".faction-item",       this.#normalizeMenuEntries(this.#factionMenuEntries()), { jQuery: false, fixed: true });
+  }
+
+  /**
+   * Foundry v13's ContextMenu has no fallback for the v14 entry property names
+   * (label/visible/onClick) — it hard-fails (undefined labels, throwing click
+   * handler) rather than just deprecation-warning like v14 does for the old
+   * names. Translate to the legacy shape (name/condition/callback) on v13 only.
+   */
+  #normalizeMenuEntries(entries) {
+    const isLegacy = (game.release?.generation ?? 14) < 14;
+    if (!isLegacy) return entries;
+    return entries.map(({ label, icon, visible, onClick, ...rest }) => ({
+      ...rest,
+      name: label,
+      icon,
+      condition: visible,
+      callback: (target) => onClick?.(null, target)
+    }));
   }
 
   #folderMenuEntries() {

@@ -1,3 +1,6 @@
+# v1.1.2
+## Minor
+- Fixed context menu bug specific to v13 caused by the 1.1.0 fix for v14 deprecation warnings.
 # v1.1.1
 
 
