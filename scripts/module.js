@@ -196,50 +196,57 @@ Hooks.once("init", async () => {
 
 // ── Open faction sheet when a @Faction enricher link is clicked ───────────────
 Hooks.once("ready", () => {
-  document.addEventListener("click", (event) => {
-    const link = event.target.closest(".ddf-faction-link[data-faction-id]");
-    if (!link) return;
-    if (!game.user.isGM) return;
-    event.preventDefault();
-    event.stopPropagation();
-    FactionDetailApp.show(link.dataset.factionId);
-  }, true);
-
   // Re-render the faction sidebar tab whenever the user clicks/activates it.
   // Forces a fresh sandbox-import check (in case SCM loaded after us) and
   // refreshes active-party gold styling + sort order when the GM has switched
   // active parties in SCM since the last render. Multiple trigger paths
   // because V14 sidebar tab activation doesn't have one stable hook signature.
+  // The triggers overlap (one tab activation can fire all three), so calls
+  // are coalesced into a single deferred render.
+  let refreshQueued = false;
   const refreshFactionTab = () => {
-    const tab = ui.sidebar?.tabs?.ddfFactions
-             ?? ui.sidebar?.tabs?.get?.("ddfFactions")
-             ?? ui?.ddfFactions
-             ?? null;
-    if (tab?.render) tab.render({ force: true });
+    if (refreshQueued) return;
+    refreshQueued = true;
+    setTimeout(() => {
+      refreshQueued = false;
+      const tab = ui.sidebar?.tabs?.ddfFactions
+               ?? ui.sidebar?.tabs?.get?.("ddfFactions")
+               ?? ui?.ddfFactions
+               ?? null;
+      if (tab?.render) tab.render({ force: true });
+    }, 50);
   };
 
-  // Trigger 1: documented changeSidebarTab hook (works in V12-V13, may differ in V14)
+  // Single capture-phase click listener handles both document-wide concerns:
+  // @Faction enricher links, and nav clicks on our sidebar tab (covers
+  // multiple V13/V14 button shapes — buttons, anchor tags, etc.).
+  document.addEventListener("click", (event) => {
+    const link = event.target.closest(".ddf-faction-link[data-faction-id]");
+    if (link) {
+      if (!game.user.isGM) return;
+      event.preventDefault();
+      event.stopPropagation();
+      FactionDetailApp.show(link.dataset.factionId);
+      return;
+    }
+    const btn = event.target.closest(
+      '[data-tab="ddfFactions"], [data-action="tab"][data-tab="ddfFactions"], [data-tab-id="ddfFactions"]'
+    );
+    if (btn) refreshFactionTab();
+  }, true);
+
+  // Trigger 2: documented changeSidebarTab hook (works in V12-V13, may differ in V14)
   Hooks.on("changeSidebarTab", (arg) => {
     const tabName = typeof arg === "string" ? arg : (arg?.tabName ?? arg?.id ?? null);
     if (tabName === "ddfFactions") refreshFactionTab();
   });
 
-  // Trigger 2: renderSidebar hook — fires when the sidebar redraws; check active tab
+  // Trigger 3: renderSidebar hook — fires when the sidebar redraws; check active tab
   Hooks.on("renderSidebar", (sidebar) => {
     const active = sidebar?.activeTab ?? sidebar?.tabName
                 ?? sidebar?.element?.querySelector?.('[data-tab].active')?.dataset?.tab;
     if (active === "ddfFactions") refreshFactionTab();
   });
-
-  // Trigger 3: direct DOM click on any nav element marked for our tab. Covers
-  // multiple V13/V14 button shapes — buttons, anchor tags, etc.
-  document.addEventListener("click", (event) => {
-    const btn = event.target.closest(
-      '[data-tab="ddfFactions"], [data-action="tab"][data-tab="ddfFactions"], [data-tab-id="ddfFactions"]'
-    );
-    if (!btn) return;
-    Promise.resolve().then(refreshFactionTab);
-  }, true);
 });
 
 // ── Enhance the Game Settings panel for Faction Manager settings ──────────────

@@ -239,6 +239,23 @@ export class RelationshipStore {
   }
 
   /**
+   * Saves many node positions in a single settings write.
+   * Multi-node operations (force-layout cooldown, orbit normalisation, subtree
+   * drags) must use this instead of repeated savePosition() calls — each
+   * settings write persists and broadcasts the entire relationships blob to
+   * every connected client, so one write per batch instead of one per node.
+   * @param {string} factionId
+   * @param {Array<{nodeKey: string, x: number, y: number}>} entries
+   */
+  static async savePositions(factionId, entries) {
+    if (!entries?.length) return;
+    const data = this.getAll();
+    const positions = (data.positions[factionId] ??= {});
+    for (const { nodeKey, x, y } of entries) positions[nodeKey] = { x, y };
+    await this._save(data, { silent: true });
+  }
+
+  /**
    * Returns the saved position map for a faction view.
    * @param {string} factionId
    * @returns {{ [nodeKey]: { x: number, y: number } }}

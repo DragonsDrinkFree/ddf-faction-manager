@@ -481,6 +481,10 @@ export class GlobalRelationshipsApp extends HandlebarsApplicationMixin(Applicati
         RelationshipStore.savePosition("__global__", nodeKey, x, y);
       },
 
+      onPositionsSave: (entries) => {
+        RelationshipStore.savePositions("__global__", entries);
+      },
+
       onContextMenu: (worldX, worldY, clientX, clientY) => {
         app.#showCanvasContextMenu(clientX, clientY, worldX, worldY);
       },

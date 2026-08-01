@@ -1,3 +1,13 @@
+# v1.1.2
+## Minor
+- Fixed context menu bug specific to v13 caused by the 1.1.0 fix for v14 deprecation warnings.
+# v1.1.1
+
+
+## Minor
+- Eliminated a bunch of redundant/repeating background calls/renders/data transmissions that would potentially impact performance as the faction system expands.
+
+
 # v1.1.0
 
 ## Minor
