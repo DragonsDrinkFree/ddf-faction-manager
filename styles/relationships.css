@@ -375,7 +375,8 @@
   gap: 6px;
 }
 
-.ddf-fm-floating .mm-search-result:hover { background: var(--color-hover-bg); }
+.ddf-fm-floating .mm-search-result:hover,
+.ddf-fm-floating .mm-search-result.mm-row-highlighted { background: var(--color-hover-bg); }
 
 .ddf-fm-floating .mm-result-type {
   font-size: 0.7rem;
@@ -398,11 +399,13 @@
   opacity: 0.5;
 }
 
-.ddf-fm-floating .mm-back-row {
+.ddf-fm-floating .mm-pack-label {
   font-weight: bold;
+  font-size: 0.8rem;
+  opacity: 0.7;
   border-bottom: 1px solid var(--color-border-light-primary);
   margin-bottom: 4px;
-  padding-bottom: 6px;
+  padding: 0 8px 6px;
 }
 
 .ddf-fm-floating .mm-direction-row {
