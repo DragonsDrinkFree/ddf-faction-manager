@@ -1,3 +1,6 @@
+# v1.2.0
+## Minor 
+- CSS adjustments to the Actor filter for membership.( reduced transparency)
 # v1.1.2
 ## Minor
 - Fixed context menu bug specific to v13 caused by the 1.1.0 fix for v14 deprecation warnings.

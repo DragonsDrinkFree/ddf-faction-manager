@@ -756,7 +756,7 @@ export class PartyDetailApp extends BaseDetailApp {
     document.querySelectorAll(".ddf-actor-search-panel").forEach(el => el.remove());
 
     const panel = document.createElement("div");
-    panel.className = "mm-search-panel ddf-actor-search-panel";
+    panel.className = "mm-search-panel ddf-fm-floating ddf-actor-search-panel";
     panel.style.position = "fixed";
     panel.style.zIndex   = "10000";
     positionPanelBesideApp(panel, this.element, triggerEl, 260);
@@ -835,7 +835,7 @@ export class PartyDetailApp extends BaseDetailApp {
     const GAP     = 6;
 
     const panel = document.createElement("div");
-    panel.className      = "mm-search-panel ddf-rep-faction-panel";
+    panel.className      = "mm-search-panel ddf-fm-floating ddf-rep-faction-panel";
     panel.style.position = "fixed";
     panel.style.zIndex   = "10000";
     panel.style.left     = `${Math.min(btnRect.left, window.innerWidth - PANEL_W - GAP)}px`;

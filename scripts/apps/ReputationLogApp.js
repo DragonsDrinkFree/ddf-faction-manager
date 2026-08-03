@@ -90,7 +90,7 @@ export class ReputationLogApp extends HandlebarsApplicationMixin(ApplicationV2) 
     const journals = [...game.journal].sort((a, b) => a.name.localeCompare(b.name));
 
     const panel = document.createElement("div");
-    panel.className      = "mm-search-panel ddf-rep-journal-panel";
+    panel.className      = "mm-search-panel ddf-fm-floating ddf-rep-journal-panel";
     panel.style.position = "fixed";
     panel.style.zIndex   = "10001";
     positionPanelBesideApp(panel, this.element, triggerEl, 260);
