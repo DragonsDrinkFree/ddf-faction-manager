@@ -6,7 +6,8 @@ import { EventLogStore } from "../data/EventLogStore.js";
 import { BaseDetailApp } from "./BaseDetailApp.js";
 import {
   getConnectionTypes,
-  positionPanelBesideApp
+  positionPanelBesideApp,
+  wireActorSearchList
 } from "../utils/ConnectionPanelHelpers.js";
 import { buildProjectContext, buildSelectedProjectContext } from "../utils/ProjectContext.js";
 
@@ -587,7 +588,7 @@ export class FactionDetailApp extends BaseDetailApp {
     const factionId = this._selectedFactionId;
 
     const panel = document.createElement("div");
-    panel.className  = "mm-search-panel ddf-member-add-panel";
+    panel.className  = "mm-search-panel ddf-fm-floating ddf-member-add-panel";
     panel.style.position = "fixed";
     panel.style.zIndex   = "10000";
     positionPanelBesideApp(panel, this.element, triggerEl, 280);
@@ -598,23 +599,10 @@ export class FactionDetailApp extends BaseDetailApp {
         .filter(m => m.actorUuid).map(m => m.actorUuid)
     );
 
-    const actors = [...game.actors].sort((a, b) => a.name.localeCompare(b.name));
-
     panel.innerHTML = `
       <div class="mm-panel-title">Add Member</div>
-      <input type="text" class="mm-search-input" placeholder="Search actors or enter a name…" autofocus />
-      <div class="mm-search-results ddf-conn-faction-list">
-        ${actors.length
-          ? actors.map(a => `
-              <div class="mm-search-result${linkedUuids.has(a.uuid) ? " ddf-already-linked" : ""}"
-                   data-uuid="${a.uuid}">
-                <i class="fa-solid fa-user ddf-link-icon"></i>
-                <span>${foundry.utils.escapeHTML(a.name)}</span>
-                ${linkedUuids.has(a.uuid) ? '<span class="ddf-linked-badge">already added</span>' : ""}
-              </div>`).join("")
-          : "<div class='mm-search-empty'>No actors in world</div>"
-        }
-      </div>
+      <input type="text" class="mm-search-input" placeholder="Search actors, @ for a compendium, or enter a name…" autofocus />
+      <div class="mm-search-results ddf-conn-faction-list"></div>
       <div class="ddf-member-add-actions">
         <button class="ddf-member-btn-unlinked" title="Add as an unlinked member using the name above">
           <i class="fa-solid fa-user-slash"></i> Create Unlinked
@@ -628,28 +616,19 @@ export class FactionDetailApp extends BaseDetailApp {
     const input   = panel.querySelector(".mm-search-input");
     const results = panel.querySelector(".mm-search-results");
 
-    // Live filter
-    input.addEventListener("input", () => {
-      const q = input.value.toLowerCase();
-      results.querySelectorAll(".mm-search-result").forEach(el => {
-        el.style.display = el.querySelector("span").textContent.toLowerCase().includes(q) ? "" : "none";
-      });
-    });
-
-    // Link existing actor
-    results.addEventListener("click", async (e) => {
-      const el = e.target.closest(".mm-search-result");
-      if (!el || el.classList.contains("ddf-already-linked")) return;
-      const actor = await fromUuid(el.dataset.uuid);
-      if (!actor) return;
-      const member = await MemberStore.createMember(factionId, {
-        name:      actor.name,
-        actorUuid: el.dataset.uuid
-      });
-      this.#selectedMemberId = member.id;
-      await this._logEvent("member", `Member added: ${member.name}`, "scmMemberAdded");
-      panel.remove();
-      this.render({ parts: ["content"] });
+    // Link existing actor (world or compendium)
+    wireActorSearchList({
+      panel, input, results,
+      excludeUuids: linkedUuids,
+      onPick: async (actor) => {
+        const member = await MemberStore.createMember(factionId, {
+          name:      actor.name,
+          actorUuid: actor.uuid
+        });
+        this.#selectedMemberId = member.id;
+        await this._logEvent("member", `Member added: ${member.name}`, "scmMemberAdded");
+        this.render({ parts: ["content"] });
+      }
     });
 
     // Create unlinked — use whatever text is in the input
@@ -877,44 +856,25 @@ export class FactionDetailApp extends BaseDetailApp {
     panel.style.zIndex   = "10000";
     positionPanelBesideApp(panel, this.element, triggerEl, 260);
 
-    const actors = [...game.actors].sort((a, b) => a.name.localeCompare(b.name));
     panel.innerHTML = `
       <div class="mm-panel-title">Link Actor</div>
-      <input type="text" class="mm-search-input" placeholder="Filter actors…" autofocus />
-      <div class="mm-search-results ddf-conn-faction-list">
-        ${actors.length
-          ? actors.map(a => `
-              <div class="mm-search-result" data-uuid="${a.uuid}">
-                <i class="fa-solid fa-user ddf-link-icon"></i>
-                <span>${foundry.utils.escapeHTML(a.name)}</span>
-              </div>`).join("")
-          : "<div class='mm-search-empty'>No actors found</div>"
-        }
-      </div>
+      <input type="text" class="mm-search-input" placeholder="Filter actors, or @ to browse a compendium…" autofocus />
+      <div class="mm-search-results ddf-conn-faction-list"></div>
       <div class="mm-panel-actions"><button class="mm-btn-cancel">Cancel</button></div>
     `;
 
     const input   = panel.querySelector(".mm-search-input");
     const results = panel.querySelector(".mm-search-results");
 
-    input.addEventListener("input", () => {
-      const q = input.value.toLowerCase();
-      results.querySelectorAll(".mm-search-result").forEach(el => {
-        el.style.display = el.textContent.toLowerCase().includes(q) ? "" : "none";
-      });
-    });
-
-    results.addEventListener("click", async (e) => {
-      const el = e.target.closest(".mm-search-result");
-      if (!el) return;
-      const actor = await fromUuid(el.dataset.uuid);
-      if (!actor) return;
-      await MemberStore.updateMember(this.#selectedMemberId, {
-        actorUuid: el.dataset.uuid,
-        name:      actor.name
-      });
-      panel.remove();
-      this.render({ parts: ["content"] });
+    wireActorSearchList({
+      panel, input, results,
+      onPick: async (actor) => {
+        await MemberStore.updateMember(this.#selectedMemberId, {
+          actorUuid: actor.uuid,
+          name:      actor.name
+        });
+        this.render({ parts: ["content"] });
+      }
     });
 
     panel.querySelector(".mm-btn-cancel").addEventListener("click", () => panel.remove());

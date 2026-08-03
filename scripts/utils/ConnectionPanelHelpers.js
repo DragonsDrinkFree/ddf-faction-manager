@@ -80,3 +80,128 @@ export function bindPanelDismiss(panel, onDismiss) {
   };
   setTimeout(() => document.addEventListener("mousedown", handler, true), 50);
 }
+
+const ACTOR_LIST_MAX_RESULTS = 150;
+
+/**
+ * Wires a filterable actor list into an existing `.mm-search-results` container
+ * and its `.mm-search-input`. Supports browsing Actor compendium packs via a
+ * leading "@" token (e.g. "@bestiary" lists matching packs; clicking one opens
+ * its contents, further filterable by continued typing). The caller is
+ * responsible for the panel's surrounding chrome (title, buttons, dismissal) —
+ * this only owns the input/results pair. Call once after both are in the DOM;
+ * it renders the initial (world-actor) list immediately.
+ *
+ * @param {object} opts
+ * @param {HTMLElement} opts.panel      — the floating panel; removed on a successful pick
+ * @param {HTMLInputElement} opts.input — the `.mm-search-input` element
+ * @param {HTMLElement} opts.results    — the `.mm-search-results` container
+ * @param {Set<string>} [opts.excludeUuids] — UUIDs rendered as already-linked (non-clickable)
+ * @param {(doc: object) => void|Promise<void>} opts.onPick — receives the resolved document
+ */
+export function wireActorSearchList({ panel, input, results, excludeUuids = new Set(), onPick }) {
+  /** The compendium pack currently being browsed, or null when listing world actors. */
+  let activePack = null;
+  /** Bumped on every render() call; guards against a slow getIndex() overwriting a newer render. */
+  let renderToken = 0;
+
+  const actorPacks = () => game.packs.filter(p => p.documentName === "Actor");
+
+  const rowHTML = (uuid, name) => {
+    const excluded = excludeUuids.has(uuid);
+    return `
+      <div class="mm-search-result${excluded ? " ddf-already-linked" : ""}" data-uuid="${uuid}">
+        <i class="fa-solid fa-user ddf-link-icon"></i>
+        <span>${foundry.utils.escapeHTML(name)}</span>
+        ${excluded ? '<span class="ddf-linked-badge">already added</span>' : ""}
+      </div>`;
+  };
+
+  const hintHTML = (shown, total) => total > shown
+    ? `<div class="mm-search-hint">+${total - shown} more — keep typing to narrow it down</div>`
+    : "";
+
+  function renderWorldActors(q) {
+    const matches = [...game.actors]
+      .filter(a => a.name.toLowerCase().includes(q))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    const shown = matches.slice(0, ACTOR_LIST_MAX_RESULTS);
+    results.innerHTML = shown.length
+      ? shown.map(a => rowHTML(a.uuid, a.name)).join("") + hintHTML(shown.length, matches.length)
+      : `<div class="mm-search-empty">No actors found</div>`;
+  }
+
+  function renderPackList(q) {
+    const packs = actorPacks()
+      .filter(p => p.title.toLowerCase().includes(q))
+      .sort((a, b) => a.title.localeCompare(b.title));
+    results.innerHTML = packs.length
+      ? packs.map(p => `
+          <div class="mm-search-result mm-pack-result" data-pack-id="${p.collection}">
+            <i class="fa-solid fa-box-archive ddf-link-icon"></i>
+            <span>${foundry.utils.escapeHTML(p.title)}</span>
+          </div>`).join("")
+      : `<div class="mm-search-empty">No matching compendiums</div>`;
+  }
+
+  async function renderPackContents(q, token) {
+    results.innerHTML = `<div class="mm-search-empty">Loading…</div>`;
+    const index = await activePack.getIndex();
+    if (token !== renderToken) return; // a newer render has since started
+
+    const matches = [...index]
+      .filter(e => e.name?.toLowerCase().includes(q))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    const shown = matches.slice(0, ACTOR_LIST_MAX_RESULTS);
+
+    const breadcrumb = `
+      <div class="mm-search-result mm-back-row" data-back="1">
+        <i class="fa-solid fa-arrow-left ddf-link-icon"></i>
+        <span>${foundry.utils.escapeHTML(activePack.title)}</span>
+      </div>`;
+    results.innerHTML = breadcrumb + (
+      shown.length
+        ? shown.map(e => rowHTML(e.uuid, e.name)).join("") + hintHTML(shown.length, matches.length)
+        : `<div class="mm-search-empty">No actors found</div>`
+    );
+  }
+
+  async function render() {
+    const token = ++renderToken;
+    const raw = input.value.trim();
+    if (!activePack && raw.startsWith("@")) {
+      renderPackList(raw.slice(1).toLowerCase());
+    } else if (activePack) {
+      await renderPackContents(input.value.toLowerCase(), token);
+    } else {
+      renderWorldActors(input.value.toLowerCase());
+    }
+  }
+
+  input.addEventListener("input", () => { render(); });
+
+  results.addEventListener("click", async (e) => {
+    const packRow = e.target.closest("[data-pack-id]");
+    if (packRow) {
+      activePack = actorPacks().find(p => p.collection === packRow.dataset.packId) ?? null;
+      input.value = "";
+      render();
+      return;
+    }
+    const backRow = e.target.closest("[data-back]");
+    if (backRow) {
+      activePack = null;
+      input.value = "";
+      render();
+      return;
+    }
+    const row = e.target.closest(".mm-search-result[data-uuid]");
+    if (!row || row.classList.contains("ddf-already-linked")) return;
+    const doc = await fromUuid(row.dataset.uuid);
+    if (!doc) return;
+    panel.remove();
+    await onPick(doc);
+  });
+
+  render();
+}

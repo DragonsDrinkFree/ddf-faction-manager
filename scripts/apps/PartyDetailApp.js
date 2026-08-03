@@ -8,7 +8,8 @@ import { BaseDetailApp } from "./BaseDetailApp.js";
 import { syncSandboxPartyMembers } from "../utils/SandboxIntegration.js";
 import {
   getConnectionTypes,
-  positionPanelBesideApp
+  positionPanelBesideApp,
+  wireActorSearchList
 } from "../utils/ConnectionPanelHelpers.js";
 import { promptName } from "../utils/AppHelpers.js";
 import { buildProjectContext, buildSelectedProjectContext } from "../utils/ProjectContext.js";
@@ -761,41 +762,17 @@ export class PartyDetailApp extends BaseDetailApp {
     panel.style.zIndex   = "10000";
     positionPanelBesideApp(panel, this.element, triggerEl, 260);
 
-    const actors = [...game.actors].sort((a, b) => a.name.localeCompare(b.name));
     panel.innerHTML = `
       <div class="mm-panel-title">${foundry.utils.escapeHTML(title)}</div>
-      <input type="text" class="mm-search-input" placeholder="Filter actors…" autofocus />
-      <div class="mm-search-results ddf-conn-faction-list">
-        ${actors.length
-          ? actors.map(a => `
-              <div class="mm-search-result" data-uuid="${a.uuid}">
-                <i class="fa-solid fa-user ddf-link-icon"></i>
-                <span>${foundry.utils.escapeHTML(a.name)}</span>
-              </div>`).join("")
-          : "<div class='mm-search-empty'>No actors found</div>"
-        }
-      </div>
+      <input type="text" class="mm-search-input" placeholder="Filter actors, or @ to browse a compendium…" autofocus />
+      <div class="mm-search-results ddf-conn-faction-list"></div>
       <div class="mm-panel-actions"><button class="mm-btn-cancel">Cancel</button></div>
     `;
 
     const input   = panel.querySelector(".mm-search-input");
     const results = panel.querySelector(".mm-search-results");
 
-    input.addEventListener("input", () => {
-      const q = input.value.toLowerCase();
-      results.querySelectorAll(".mm-search-result").forEach(el => {
-        el.style.display = el.textContent.toLowerCase().includes(q) ? "" : "none";
-      });
-    });
-
-    results.addEventListener("click", async (e) => {
-      const el = e.target.closest(".mm-search-result");
-      if (!el) return;
-      const actor = await fromUuid(el.dataset.uuid);
-      if (!actor) return;
-      panel.remove();
-      await onPick(actor);
-    });
+    wireActorSearchList({ panel, input, results, onPick });
 
     panel.querySelector(".mm-btn-cancel").addEventListener("click", () => panel.remove());
     document.body.appendChild(panel);
